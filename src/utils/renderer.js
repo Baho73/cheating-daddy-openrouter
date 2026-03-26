@@ -190,17 +190,16 @@ async function initializeOpenRouter(profile = 'interview') {
     const whisperModel = prefs.openrouterWhisperModel || 'Xenova/whisper-tiny';
     const customPrompt = prefs.customPrompt || '';
 
-    // WhisperX Docker + detector config (if enabled)
-    let whisperXConfig = null;
+    // WhisperX Docker + detector config
+    let whisperXConfig = {
+        detectorModel: prefs.detectorModel || 'openai/gpt-4o-mini',
+        windowSize: prefs.windowSize || 15,
+        checkFrequency: prefs.checkFrequency || 1000,
+    };
     if (prefs.whisperXEnabled !== false) {
-        whisperXConfig = {
-            url: prefs.whisperXUrl || 'http://localhost:8000',
-            model: prefs.whisperXModel || 'large-v3',
-            language: prefs.whisperXLang || 'ru',
-            detectorModel: prefs.detectorModel || 'openai/gpt-4o-mini',
-            windowSize: prefs.windowSize || 15,
-            checkFrequency: prefs.checkFrequency || 1000,
-        };
+        whisperXConfig.url = prefs.whisperXUrl || 'http://localhost:8000';
+        whisperXConfig.model = prefs.whisperXModel || 'large-v3';
+        whisperXConfig.language = prefs.whisperXLang || 'ru';
     }
 
     const success = await ipcRenderer.invoke('initialize-openrouter', apiKey, model, visionModel, whisperModel, profile, customPrompt, whisperXConfig);

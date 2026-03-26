@@ -93,3 +93,11 @@ typings/
 out/
 .specstory
 .specstory/
+
+# Secrets & keys
+*_key*.txt
+*.key
+*.secret
+
+# Test artifacts
+*.wav

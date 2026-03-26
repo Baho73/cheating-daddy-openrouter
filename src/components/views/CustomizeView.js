@@ -666,7 +666,7 @@ export class CustomizeView extends LitElement {
                             class="slider-input"
                             type="range"
                             min="12"
-                            max="32"
+                            max="72"
                             step="1"
                             .value=${this.fontSize}
                             @input=${this.handleFontSizeChange}

@@ -195,14 +195,11 @@ async function transcribeAccumulatedAudio() {
     if (isTranscribing || pendingAudioChunks.length === 0) return;
     isTranscribing = true;
 
-    const audioData = Buffer.concat(pendingAudioChunks);
-    pendingAudioChunks = [];
-
     try {
-        if (audioData.length < 16000) {
-            isTranscribing = false;
-            return;
-        }
+        const audioData = Buffer.concat(pendingAudioChunks);
+        pendingAudioChunks = [];
+
+        if (audioData.length < 16000) return;
 
         const text = whisperXUrl
             ? await transcribeWithWhisperX(audioData)
@@ -222,9 +219,9 @@ async function transcribeAccumulatedAudio() {
         }
     } catch (error) {
         console.error('[OpenRouter] Transcription error:', error);
+    } finally {
+        isTranscribing = false;
     }
-
-    isTranscribing = false;
 }
 
 // ── Question Detection ──
@@ -264,10 +261,7 @@ async function detectQuestion() {
 
     try {
         const prompt = buildDetectorPrompt();
-        if (!prompt) {
-            isDetecting = false;
-            return;
-        }
+        if (!prompt) return;
 
         const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
             method: 'POST',
@@ -287,7 +281,6 @@ async function detectQuestion() {
 
         if (!response.ok) {
             console.error('[OpenRouter] Detector error:', response.status);
-            isDetecting = false;
             return;
         }
 
@@ -298,10 +291,7 @@ async function detectQuestion() {
             console.log('[OpenRouter] Question detected:', result);
 
             const lastQ = detectedQuestions[detectedQuestions.length - 1];
-            if (lastQ && lastQ.toLowerCase() === result.toLowerCase()) {
-                isDetecting = false;
-                return;
-            }
+            if (lastQ && lastQ.toLowerCase() === result.toLowerCase()) return;
 
             detectedQuestions.push(result);
             if (detectedQuestions.length > 10) {
@@ -315,9 +305,9 @@ async function detectQuestion() {
         }
     } catch (error) {
         console.error('[OpenRouter] Detector error:', error);
+    } finally {
+        isDetecting = false;
     }
-
-    isDetecting = false;
 }
 
 // ── OpenRouter Chat API ──
@@ -373,31 +363,33 @@ async function sendToOpenRouter(text) {
         const decoder = new TextDecoder();
         let fullText = '';
         let isFirst = true;
+        let sseBuffer = '';
 
         while (true) {
             const { done, value } = await reader.read();
             if (done) break;
 
-            const chunk = decoder.decode(value, { stream: true });
-            const lines = chunk.split('\n').filter(line => line.trim() !== '');
+            sseBuffer += decoder.decode(value, { stream: true });
+            const lines = sseBuffer.split('\n');
+            sseBuffer = lines.pop() || '';
 
             for (const line of lines) {
-                if (line.startsWith('data: ')) {
-                    const data = line.slice(6);
-                    if (data === '[DONE]') continue;
-                    try {
-                        const json = JSON.parse(data);
-                        const token = json.choices?.[0]?.delta?.content || '';
-                        if (token) {
-                            fullText += token;
-                            const displayText = stripThinkingTags(fullText);
-                            if (displayText) {
-                                sendToRenderer(isFirst ? 'new-response' : 'update-response', displayText);
-                                isFirst = false;
-                            }
+                const trimmed = line.trim();
+                if (!trimmed || !trimmed.startsWith('data: ')) continue;
+                const data = trimmed.slice(6);
+                if (data === '[DONE]') continue;
+                try {
+                    const json = JSON.parse(data);
+                    const token = json.choices?.[0]?.delta?.content || '';
+                    if (token) {
+                        fullText += token;
+                        const displayText = stripThinkingTags(fullText);
+                        if (displayText) {
+                            sendToRenderer(isFirst ? 'new-response' : 'update-response', displayText);
+                            isFirst = false;
                         }
-                    } catch {}
-                }
+                    }
+                } catch {}
             }
         }
 
@@ -462,28 +454,30 @@ async function sendImageToOpenRouter(base64Data, prompt) {
         const decoder = new TextDecoder();
         let fullText = '';
         let isFirst = true;
+        let sseBuffer = '';
 
         while (true) {
             const { done, value } = await reader.read();
             if (done) break;
 
-            const chunk = decoder.decode(value, { stream: true });
-            const lines = chunk.split('\n').filter(line => line.trim() !== '');
+            sseBuffer += decoder.decode(value, { stream: true });
+            const lines = sseBuffer.split('\n');
+            sseBuffer = lines.pop() || '';
 
             for (const line of lines) {
-                if (line.startsWith('data: ')) {
-                    const data = line.slice(6);
-                    if (data === '[DONE]') continue;
-                    try {
-                        const json = JSON.parse(data);
-                        const token = json.choices?.[0]?.delta?.content || '';
-                        if (token) {
-                            fullText += token;
-                            sendToRenderer(isFirst ? 'new-response' : 'update-response', fullText);
-                            isFirst = false;
-                        }
-                    } catch {}
-                }
+                const trimmed = line.trim();
+                if (!trimmed || !trimmed.startsWith('data: ')) continue;
+                const data = trimmed.slice(6);
+                if (data === '[DONE]') continue;
+                try {
+                    const json = JSON.parse(data);
+                    const token = json.choices?.[0]?.delta?.content || '';
+                    if (token) {
+                        fullText += token;
+                        sendToRenderer(isFirst ? 'new-response' : 'update-response', fullText);
+                        isFirst = false;
+                    }
+                } catch {}
             }
         }
 

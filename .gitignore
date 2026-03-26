@@ -101,3 +101,8 @@ out/
 
 # Test artifacts
 *.wav
+
+# Tools (NirSoft binaries, downloaded locally)
+tools/*.exe
+tools/*.zip
+tools/*.chm

@@ -6,6 +6,10 @@ cd /d "%~dp0"
 
 echo Stopping Cheating Daddy...
 taskkill /F /IM "Cheating Daddy.exe" >nul 2>&1
+taskkill /F /IM "electron.exe" >nul 2>&1
+
+echo Switching audio output to Jabra (for loopback capture)...
+tools\svcl.exe /SetDefault "Jabra SPEAK 510" all
 
 echo Starting WhisperX Docker...
 cd /d "D:\Python\whisperX-FastAPI"
@@ -27,3 +31,8 @@ if %errorlevel%==0 (
 
 echo Starting Cheating Daddy...
 node_modules\.bin\electron .
+
+:: When Electron exits, restore audio
+echo Restoring audio output to Realtek...
+tools\svcl.exe /SetDefault "Realtek High Definition Audio" all
+echo Audio restored. Done.

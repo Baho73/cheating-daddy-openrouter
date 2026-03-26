@@ -1162,6 +1162,10 @@ const cheatingDaddy = {
 // Make it globally available
 window.cheatingDaddy = cheatingDaddy;
 
+// START_CHANGE_SUMMARY
+//   LAST_CHANGE: [v2.0.0 — Added GRACE semantic markup: MODULE_CONTRACT, MODULE_MAP, CHANGE_SUMMARY]
+// END_CHANGE_SUMMARY
+
 // Load theme after DOM is ready
 if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', () => theme.load());

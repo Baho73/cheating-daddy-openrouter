@@ -212,15 +212,19 @@ async function transcribeAccumulatedAudio() {
     if (isTranscribing || audioRingBuffer.length === 0) return;
     isTranscribing = true;
 
+    const t0 = Date.now();
     try {
         // Grab entire ring buffer (last N seconds of audio)
         const audioData = Buffer.concat(audioRingBuffer.map(c => c.data));
+        const audioDurationSec = (audioData.length / 2 / 16000).toFixed(1);
 
         if (audioData.length < 16000) return;
 
         const text = whisperXUrl
             ? await transcribeWithWhisperX(audioData)
             : await transcribeAudio(audioData);
+
+        const sttMs = Date.now() - t0;
 
         if (text && text.trim().length > 1 && !isHallucination(text)) {
             continuousBuffer.push({
@@ -232,7 +236,9 @@ async function transcribeAccumulatedAudio() {
             continuousBuffer = continuousBuffer.filter(entry => entry.timestamp >= cutoff);
 
             sendToRenderer('update-status', `Hearing: "${text.trim().substring(0, 50)}..."`);
-            console.log('[OpenRouter] Continuous transcription:', text.trim().substring(0, 80));
+            console.log(`[STT] ${sttMs}ms | ${audioDurationSec}s audio | buf=${continuousBuffer.length} entries | "${text.trim().substring(0, 100)}"`);
+        } else {
+            console.log(`[STT] ${sttMs}ms | ${audioDurationSec}s audio | ${text ? 'hallucination filtered: "' + text.trim().substring(0, 50) + '"' : 'no speech'}`);
         }
     } catch (error) {
         console.error('[OpenRouter] Transcription error:', error);
@@ -275,10 +281,14 @@ async function detectQuestion() {
     if (continuousBuffer.length === 0) return;
 
     isDetecting = true;
+    const t0 = Date.now();
+    const bufferText = continuousBuffer.map(e => e.text).join(' ');
 
     try {
         const prompt = buildDetectorPrompt();
         if (!prompt) return;
+
+        console.log(`[DET] Sending to ${detectorModel} | buffer: ${bufferText.length} chars, ${continuousBuffer.length} entries | "${bufferText.substring(0, 120)}..."`);
 
         const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
             method: 'POST',
@@ -297,18 +307,23 @@ async function detectQuestion() {
         });
 
         if (!response.ok) {
-            console.error('[OpenRouter] Detector error:', response.status);
+            console.error(`[DET] Error: HTTP ${response.status} (${Date.now() - t0}ms)`);
             return;
         }
 
         const data = await response.json();
         const result = data.choices?.[0]?.message?.content?.trim();
+        const detMs = Date.now() - t0;
+        const tokens = data.usage?.total_tokens || '?';
 
         if (result && result !== '---' && result.length > 5) {
-            console.log('[OpenRouter] Question detected:', result);
-
             const lastQ = detectedQuestions[detectedQuestions.length - 1];
-            if (lastQ && lastQ.toLowerCase() === result.toLowerCase()) return;
+            if (lastQ && lastQ.toLowerCase() === result.toLowerCase()) {
+                console.log(`[DET] ${detMs}ms ${tokens}tok | DEDUP SKIP: "${result.substring(0, 80)}"`);
+                return;
+            }
+
+            console.log(`[DET] ${detMs}ms ${tokens}tok | QUESTION FOUND: "${result}"`);
 
             detectedQuestions.push(result);
             if (detectedQuestions.length > 10) {
@@ -319,6 +334,8 @@ async function detectQuestion() {
             sendToRenderer('update-status', 'Generating response...');
             await sendToOpenRouter(result);
             sendToRenderer('update-status', 'Listening...');
+        } else {
+            console.log(`[DET] ${detMs}ms ${tokens}tok | no question | response: "${(result || '').substring(0, 50)}"`);
         }
     } catch (error) {
         console.error('[OpenRouter] Detector error:', error);
@@ -341,7 +358,8 @@ async function sendToOpenRouter(text) {
 
     if (!text || text.trim() === '') return;
 
-    console.log('[OpenRouter] Sending to', openrouterModel, ':', text.substring(0, 80) + '...');
+    const llmT0 = Date.now();
+    console.log(`[LLM] Sending to ${openrouterModel} | question: "${text.substring(0, 120)}" | history: ${conversationHistory.length} msgs`);
 
     conversationHistory.push({ role: 'user', content: text.trim() });
     if (conversationHistory.length > 20) {
@@ -416,10 +434,11 @@ async function sendToOpenRouter(text) {
             saveConversationTurn(text, cleanedResponse);
         }
 
-        console.log('[OpenRouter] Response completed');
+        const llmMs = Date.now() - llmT0;
+        console.log(`[LLM] ${llmMs}ms | ${openrouterModel} | response: ${cleanedResponse.length} chars | "${cleanedResponse.substring(0, 120)}..."`);
         sendToRenderer('update-status', 'Listening...');
     } catch (error) {
-        console.error('[OpenRouter] Error:', error);
+        console.error(`[LLM] Error after ${Date.now() - llmT0}ms:`, error.message);
         sendToRenderer('update-status', 'OpenRouter error: ' + error.message);
     }
 }

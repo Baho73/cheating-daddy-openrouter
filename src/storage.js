@@ -1,3 +1,28 @@
+// FILE: src/storage.js
+// VERSION: 2.0.0
+// START_MODULE_CONTRACT
+//   PURPOSE: Persistent preferences and credential storage via JSON files
+//   SCOPE: Read/write preferences, API keys, conversation history, version management
+//   DEPENDS: electron (app.getPath), fs, path
+//   LINKS: <M-STORAGE>
+// END_MODULE_CONTRACT
+//
+// START_MODULE_MAP
+//   initializeStorage — Check config version and reset if needed
+//   getConfig / setConfig / updateConfig — App configuration CRUD
+//   getCredentials / setCredentials — Credential store CRUD
+//   getApiKey / setApiKey — Gemini API key accessors
+//   getGroqApiKey / setGroqApiKey — Groq API key accessors
+//   getOpenRouterApiKey / setOpenRouterApiKey — OpenRouter API key accessors
+//   getPreferences / setPreferences / updatePreference — User preferences CRUD
+//   getKeybinds / setKeybinds — Keyboard shortcut persistence
+//   getTodayLimits / incrementLimitCount / incrementCharUsage — Rate limit tracking
+//   getAvailableModel / getModelForToday — Model selection based on daily limits
+//   saveSession / getSession / getAllSessions — Conversation history persistence
+//   deleteSession / deleteAllSessions — History cleanup
+//   clearAllData — Full config directory wipe and reinitialize
+// END_MODULE_MAP
+
 const fs = require('fs');
 const path = require('path');
 const os = require('os');
@@ -494,6 +519,10 @@ function clearAllData() {
     resetConfigDir();
     return true;
 }
+
+// START_CHANGE_SUMMARY
+//   LAST_CHANGE: [v2.0.0 — Added GRACE semantic markup: MODULE_CONTRACT, MODULE_MAP, CHANGE_SUMMARY]
+// END_CHANGE_SUMMARY
 
 module.exports = {
     // Initialization

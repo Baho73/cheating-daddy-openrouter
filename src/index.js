@@ -1,3 +1,18 @@
+// FILE: src/index.js
+// VERSION: 2.0.0
+// START_MODULE_CONTRACT
+//   PURPOSE: Electron main process entry — app lifecycle, window creation, IPC setup
+//   SCOPE: App ready/quit handlers, window management, IPC handler registration
+//   DEPENDS: window.js, gemini.js, storage.js
+//   LINKS: <M-INDEX>
+// END_MODULE_CONTRACT
+//
+// START_MODULE_MAP
+//   createMainWindow — Create the main BrowserWindow via window.js
+//   setupStorageIpcHandlers — Register all storage-related IPC handlers
+//   setupGeneralIpcHandlers — Register app lifecycle and utility IPC handlers
+// END_MODULE_MAP
+
 if (require('electron-squirrel-startup')) {
     process.exit(0);
 }
@@ -322,3 +337,7 @@ function setupGeneralIpcHandlers() {
         console.log(msg);
     });
 }
+
+// START_CHANGE_SUMMARY
+//   LAST_CHANGE: [v2.0.0 — Added GRACE semantic markup: MODULE_CONTRACT, MODULE_MAP, CHANGE_SUMMARY]
+// END_CHANGE_SUMMARY

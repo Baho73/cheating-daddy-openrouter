@@ -1,3 +1,30 @@
+// FILE: src/components/views/MainView.js
+// VERSION: 2.0.0
+// START_MODULE_CONTRACT
+//   PURPOSE: Main settings view — provider selection, model configuration, diagnostics
+//   SCOPE: API key management, model selection, WhisperX config, detector settings, diagnostics
+//   DEPENDS: Lit 2.7.4, cheatingDaddy global (storage, fetchOpenRouterModels)
+//   LINKS: <M-MAIN-VIEW>
+// END_MODULE_CONTRACT
+//
+// START_MODULE_MAP
+//   MainView — LitElement view for provider/model configuration and session start
+//   _loadFromStorage — Load persisted preferences and credentials on init
+//   _saveMode — Persist selected provider mode (cloud/local/openrouter/byok)
+//   _handleStart — Validate config and invoke onStart callback
+//   triggerApiKeyError — Flash API key input error state from parent
+//   _fetchOpenRouterModels — Fetch available models from OpenRouter API
+//   _runDiagnostics — Run connectivity tests for configured providers
+//   _testWhisperXDocker — Test WhisperX Docker endpoint connectivity
+//   _testChatModel — Test chat model inference via OpenRouter
+//   _testVisionModel — Test vision model inference via OpenRouter
+//   _renderStartButton — Render the session start button with aurora animation
+//   _renderCloudMode — Render cloud provider configuration UI
+//   _renderByokMode — Render bring-your-own-key configuration UI
+//   _renderLocalMode — Render local AI (Ollama) configuration UI
+//   _renderOpenRouterMode — Render OpenRouter configuration UI
+// END_MODULE_MAP
+
 import { html, css, LitElement } from '../../assets/lit-core-2.7.4.min.js';
 
 export class MainView extends LitElement {
@@ -1781,5 +1808,9 @@ export class MainView extends LitElement {
         `;
     }
 }
+
+// START_CHANGE_SUMMARY
+//   LAST_CHANGE: [v2.0.0 — Added GRACE semantic markup: MODULE_CONTRACT, MODULE_MAP, CHANGE_SUMMARY]
+// END_CHANGE_SUMMARY
 
 customElements.define('main-view', MainView);

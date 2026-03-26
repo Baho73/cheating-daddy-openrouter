@@ -1,3 +1,30 @@
+// FILE: src/utils/openrouter.js
+// VERSION: 2.0.0
+// START_MODULE_CONTRACT
+//   PURPOSE: Continuous audio transcription with LLM-based question detection via OpenRouter API
+//   SCOPE: Audio ring buffer → WhisperX STT → text buffer → question detector → main LLM chat
+//   DEPENDS: gemini.js (sendToRenderer, initializeNewSession, saveConversationTurn), prompts.js (getSystemPrompt)
+//   LINKS: <M-OPENROUTER>
+// END_MODULE_CONTRACT
+//
+// START_MODULE_MAP
+//   resample24kTo16k — Downsample audio from 24kHz to 16kHz with linear interpolation
+//   loadWhisperPipeline — Load local HuggingFace Whisper model (fallback STT)
+//   transcribeAudio — Transcribe PCM buffer via local Whisper pipeline
+//   pcm16ToWavBuffer — Convert PCM16 buffer to WAV format with headers
+//   transcribeWithWhisperX — Send audio to WhisperX Docker API, poll for result
+//   isHallucination — Filter known Whisper hallucination patterns
+//   transcribeAccumulatedAudio — Grab ring buffer audio, send to STT, push to text buffer
+//   buildDetectorPrompt — Build prompt for question detection LLM
+//   detectQuestion — Call detector LLM to find new questions in text buffer
+//   stripThinkingTags — Remove <think> tags from LLM responses
+//   sendToOpenRouter — Stream chat completion from OpenRouter API
+//   sendImageToOpenRouter — Send screenshot to vision model via OpenRouter
+//   initializeOpenRouterSession — Configure and start continuous transcription session
+//   processOpenRouterAudio — Receive audio chunk, add to ring buffer
+//   closeOpenRouterSession — Stop timers, clear state
+// END_MODULE_MAP
+
 const { BrowserWindow } = require('electron');
 const { getSystemPrompt } = require('./prompts');
 const { sendToRenderer, initializeNewSession, saveConversationTurn } = require('./gemini');
@@ -39,6 +66,7 @@ let resampleRemainder = Buffer.alloc(0);
 
 // ── Audio Resampling (24kHz → 16kHz) ──
 
+// START_BLOCK_AUDIO_RESAMPLING
 function resample24kTo16k(inputBuffer) {
     const combined = Buffer.concat([resampleRemainder, inputBuffer]);
     const inputSamples = Math.floor(combined.length / 2);
@@ -60,6 +88,7 @@ function resample24kTo16k(inputBuffer) {
     resampleRemainder = remainderStart < combined.length ? combined.slice(remainderStart) : Buffer.alloc(0);
     return outputBuffer;
 }
+// END_BLOCK_AUDIO_RESAMPLING
 
 // ── Whisper ──
 
@@ -192,6 +221,7 @@ async function transcribeWithWhisperX(pcm16kBuffer) {
 
 // ── Continuous Transcription ──
 
+// START_BLOCK_HALLUCINATION_FILTER
 // Whisper hallucination filter — common patterns when no real speech
 const HALLUCINATION_PATTERNS = [
     /субтитры/i, /продолжение следу/i, /спасибо за просмотр/i, /подпис/i,
@@ -207,13 +237,21 @@ function isHallucination(text) {
     if (t.length < 3) return true;
     return HALLUCINATION_PATTERNS.some(p => p.test(t));
 }
+// END_BLOCK_HALLUCINATION_FILTER
 
+// START_CONTRACT: transcribeAccumulatedAudio
+//   PURPOSE: Grab audio from ring buffer, transcribe via STT, push valid text to continuous buffer
+//   INPUTS: (none — reads from audioRingBuffer state)
+//   OUTPUTS: { void — side effects only }
+//   SIDE_EFFECTS: Appends to continuousBuffer, trims old entries, updates renderer status
+// END_CONTRACT: transcribeAccumulatedAudio
 async function transcribeAccumulatedAudio() {
     if (isTranscribing || audioRingBuffer.length === 0) return;
     isTranscribing = true;
 
     const t0 = Date.now();
     try {
+        // START_BLOCK_RING_BUFFER_MANAGEMENT
         // Grab entire ring buffer (last N seconds of audio)
         const audioData = Buffer.concat(audioRingBuffer.map(c => c.data));
         const audioDurationSec = (audioData.length / 2 / 16000).toFixed(1);
@@ -225,6 +263,8 @@ async function transcribeAccumulatedAudio() {
             : await transcribeAudio(audioData);
 
         const sttMs = Date.now() - t0;
+
+        // END_BLOCK_RING_BUFFER_MANAGEMENT
 
         if (text && text.trim().length > 1 && !isHallucination(text)) {
             continuousBuffer.push({
@@ -249,6 +289,13 @@ async function transcribeAccumulatedAudio() {
 
 // ── Question Detection ──
 
+// START_CONTRACT: buildDetectorPrompt
+//   PURPOSE: Assemble the prompt sent to the detector LLM with recent transcription and known questions
+//   INPUTS: (none — reads from continuousBuffer, detectedQuestions state)
+//   OUTPUTS: { string|null — formatted prompt or null if no text available }
+//   SIDE_EFFECTS: None
+// END_CONTRACT: buildDetectorPrompt
+// START_BLOCK_DETECTOR_PROMPT_BUILD
 function buildDetectorPrompt() {
     const fullText = continuousBuffer.map(e => e.text).join(' ');
     if (!fullText.trim()) return null;
@@ -275,7 +322,14 @@ ${recentList}
 Transcription:
 "${fullText}"`;
 }
+// END_BLOCK_DETECTOR_PROMPT_BUILD
 
+// START_CONTRACT: detectQuestion
+//   PURPOSE: Call detector LLM to identify new questions in the continuous transcription buffer
+//   INPUTS: (none — reads from continuousBuffer, openrouterApiKey, detectorModel state)
+//   OUTPUTS: { void — triggers sendToOpenRouter on detected question }
+//   SIDE_EFFECTS: Appends to detectedQuestions, sends to renderer, calls sendToOpenRouter
+// END_CONTRACT: detectQuestion
 async function detectQuestion() {
     if (isDetecting || !isActive || !openrouterApiKey) return;
     if (continuousBuffer.length === 0) return;
@@ -290,6 +344,7 @@ async function detectQuestion() {
 
         console.log(`[DET] Sending to ${detectorModel} | buffer: ${bufferText.length} chars, ${continuousBuffer.length} entries | "${bufferText.substring(0, 120)}..."`);
 
+        // START_BLOCK_DETECTOR_API_CALL
         const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
             method: 'POST',
             headers: {
@@ -312,6 +367,9 @@ async function detectQuestion() {
         }
 
         const data = await response.json();
+        // END_BLOCK_DETECTOR_API_CALL
+
+        // START_BLOCK_DETECTOR_RESULT_PROCESS
         const result = data.choices?.[0]?.message?.content?.trim();
         const detMs = Date.now() - t0;
         const tokens = data.usage?.total_tokens || '?';
@@ -337,6 +395,7 @@ async function detectQuestion() {
         } else {
             console.log(`[DET] ${detMs}ms ${tokens}tok | no question | response: "${(result || '').substring(0, 50)}"`);
         }
+        // END_BLOCK_DETECTOR_RESULT_PROCESS
     } catch (error) {
         console.error('[OpenRouter] Detector error:', error);
     } finally {
@@ -345,6 +404,13 @@ async function detectQuestion() {
 }
 
 // ── OpenRouter Chat API ──
+
+// START_CONTRACT: sendToOpenRouter
+//   PURPOSE: Stream a chat completion from OpenRouter API with conversation history
+//   INPUTS: { text: string — user question/message to send }
+//   OUTPUTS: { void — streams response tokens to renderer }
+//   SIDE_EFFECTS: Appends to conversationHistory, sends streamed tokens to renderer, saves turn
+// END_CONTRACT: sendToOpenRouter
 
 function stripThinkingTags(text) {
     return text.replace(/<think>[\s\S]*?<\/think>/g, '').trim();
@@ -394,6 +460,7 @@ async function sendToOpenRouter(text) {
             return;
         }
 
+        // START_BLOCK_SSE_STREAM_PARSE
         const reader = response.body.getReader();
         const decoder = new TextDecoder();
         let fullText = '';
@@ -427,7 +494,9 @@ async function sendToOpenRouter(text) {
                 } catch {}
             }
         }
+        // END_BLOCK_SSE_STREAM_PARSE
 
+        // START_BLOCK_RESPONSE_CLEANUP
         const cleanedResponse = stripThinkingTags(fullText);
         if (cleanedResponse) {
             conversationHistory.push({ role: 'assistant', content: cleanedResponse });
@@ -437,6 +506,7 @@ async function sendToOpenRouter(text) {
         const llmMs = Date.now() - llmT0;
         console.log(`[LLM] ${llmMs}ms | ${openrouterModel} | response: ${cleanedResponse.length} chars | "${cleanedResponse.substring(0, 120)}..."`);
         sendToRenderer('update-status', 'Listening...');
+        // END_BLOCK_RESPONSE_CLEANUP
     } catch (error) {
         console.error(`[LLM] Error after ${Date.now() - llmT0}ms:`, error.message);
         sendToRenderer('update-status', 'OpenRouter error: ' + error.message);
@@ -528,6 +598,12 @@ async function sendImageToOpenRouter(base64Data, prompt) {
 
 // ── Public API ──
 
+// START_CONTRACT: initializeOpenRouterSession
+//   PURPOSE: Configure API keys, load STT engine, and start continuous transcription + detection timers
+//   INPUTS: { apiKey: string, model: string, visionModel: string, whisperModel: string, profile: string, customPrompt: string, whisperXConfig: object }
+//   OUTPUTS: { boolean — true if session started successfully }
+//   SIDE_EFFECTS: Sets module state, starts setInterval timers, initializes STT, sends renderer updates
+// END_CONTRACT: initializeOpenRouterSession
 async function initializeOpenRouterSession(apiKey, model, visionModel, whisperModel, profile, customPrompt, whisperXConfig) {
     console.log('[OpenRouter] Initializing session:', { model, visionModel, whisperModel, profile, whisperXConfig });
     sendToRenderer('session-initializing', true);
@@ -629,6 +705,12 @@ async function initializeOpenRouterSession(apiKey, model, visionModel, whisperMo
     }
 }
 
+// START_CONTRACT: processOpenRouterAudio
+//   PURPOSE: Receive incoming 24kHz audio chunk, downsample to 16kHz, add to ring buffer
+//   INPUTS: { monoChunk24k: Buffer — raw PCM16 mono audio at 24kHz }
+//   OUTPUTS: { void }
+//   SIDE_EFFECTS: Appends to audioRingBuffer, trims old entries beyond lookback window
+// END_CONTRACT: processOpenRouterAudio
 function processOpenRouterAudio(monoChunk24k) {
     if (!isActive) return;
     const pcm16k = resample24kTo16k(monoChunk24k);
@@ -642,6 +724,12 @@ function processOpenRouterAudio(monoChunk24k) {
     audioRingBuffer = audioRingBuffer.filter(c => c.timestamp >= cutoff);
 }
 
+// START_CONTRACT: closeOpenRouterSession
+//   PURPOSE: Stop all timers and reset module state to idle
+//   INPUTS: (none)
+//   OUTPUTS: { void }
+//   SIDE_EFFECTS: Clears timers, resets all buffers and flags, clears conversation history
+// END_CONTRACT: closeOpenRouterSession
 function closeOpenRouterSession() {
     console.log('[OpenRouter] Closing session');
     isActive = false;
@@ -681,6 +769,10 @@ async function sendOpenRouterText(text) {
         return { success: false, error: error.message };
     }
 }
+
+// START_CHANGE_SUMMARY
+//   LAST_CHANGE: [v2.0.0 — Replaced VAD with continuous transcription + LLM question detector]
+// END_CHANGE_SUMMARY
 
 module.exports = {
     initializeOpenRouterSession,

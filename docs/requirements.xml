@@ -1,47 +1,143 @@
-<RequirementsAnalysis VERSION="0.1.0">
-  <UseCases>
+<?xml version="1.0" encoding="UTF-8"?>
+<Requirements project="cheating-daddy-openrouter" version="2.0.0">
 
-    <UC-001>
-      <Actor>User</Actor>
-      <Action>Запускает AI-сессию во время видеозвонка</Action>
-      <Goal>Получать контекстные подсказки от AI в реальном времени</Goal>
-      <AcceptanceCriteria>AI анализирует аудио и экран, отображает релевантные ответы в overlay-окне</AcceptanceCriteria>
-    </UC-001>
+    <!-- ═══════════════════════════════════════════════════════════════
+         USE CASES (AAG: Actor — Action — Goal)
+         ═══════════════════════════════════════════════════════════════ -->
+    <UseCases>
 
-    <UC-002>
-      <Actor>User</Actor>
-      <Action>Выбирает профиль сессии (Interview, Sales, Meeting и т.д.)</Action>
-      <Goal>Получать подсказки, адаптированные под конкретный тип разговора</Goal>
-      <AcceptanceCriteria>Системный промпт меняется в соответствии с выбранным профилем</AcceptanceCriteria>
-    </UC-002>
+        <UC-REALTIME-ASSIST>
+            <actor>Interview Candidate</actor>
+            <action>Receives real-time AI-generated answers during video call</action>
+            <goal>Pass technical interviews with AI assistance</goal>
+            <acceptance>AI captures audio stream, detects questions via LLM detector, generates contextual answers, and displays them in an always-on-top overlay within seconds</acceptance>
+        </UC-REALTIME-ASSIST>
 
-    <UC-003>
-      <Actor>User</Actor>
-      <Action>Выбирает AI-провайдер (BYOK Gemini / Cloud / Local Ollama)</Action>
-      <Goal>Использовать предпочтительный способ AI-инференса</Goal>
-      <AcceptanceCriteria>Приложение корректно работает с каждым из трёх провайдеров</AcceptanceCriteria>
-    </UC-003>
+        <UC-CONTINUOUS-STT>
+            <actor>System</actor>
+            <action>Continuously transcribes speaker audio via WhisperX Docker or local Whisper</action>
+            <goal>Produce a rolling text buffer of the last N seconds of speech for question detection</goal>
+            <acceptance>Audio is resampled 24kHz to 16kHz, sent in overlapping 3s chunks every 0.5s to STT, hallucinations are filtered out, and transcription entries are timestamped in a rolling window</acceptance>
+        </UC-CONTINUOUS-STT>
 
-    <UC-004>
-      <Actor>System</Actor>
-      <Action>Захватывает аудио и скриншоты экрана</Action>
-      <Goal>Предоставить AI контекст текущего разговора</Goal>
-      <AcceptanceCriteria>Аудио и скриншоты передаются AI-провайдеру с минимальной задержкой</AcceptanceCriteria>
-    </UC-004>
+        <UC-QUESTION-DETECT>
+            <actor>System</actor>
+            <action>Periodically sends rolling transcription window to a fast LLM (gpt-4o-mini) to detect new questions</action>
+            <goal>Automatically identify when the interviewer asks a new question and trigger answer generation</goal>
+            <acceptance>Detector runs at configurable interval (500ms-2s), deduplicates against last 10 questions, and dispatches detected questions to the main LLM</acceptance>
+        </UC-QUESTION-DETECT>
 
-    <UC-005>
-      <Actor>User</Actor>
-      <Action>Управляет overlay-окном горячими клавишами</Action>
-      <Goal>Быстро показать/скрыть/переместить окно подсказок</Goal>
-      <AcceptanceCriteria>Горячие клавиши работают глобально, окно поддерживает click-through режим</AcceptanceCriteria>
-    </UC-005>
+        <UC-PROVIDER-SELECT>
+            <actor>User</actor>
+            <action>Selects AI provider mode: Cloud, BYOK (Gemini), OpenRouter, or Local (Ollama)</action>
+            <goal>Use preferred AI inference method based on cost, speed, and privacy needs</goal>
+            <acceptance>Each provider mode initializes its own session, STT pipeline, and conversation history; switching modes cleanly tears down the previous session</acceptance>
+        </UC-PROVIDER-SELECT>
 
-    <UC-006>
-      <Actor>User</Actor>
-      <Action>Просматривает историю сессий</Action>
-      <Goal>Вернуться к предыдущим подсказкам и анализу</Goal>
-      <AcceptanceCriteria>История сессий сохраняется и доступна через UI</AcceptanceCriteria>
-    </UC-006>
+        <UC-PROFILE-SELECT>
+            <actor>User</actor>
+            <action>Selects a session profile (Interview, Sales, Meeting, etc.) and optionally provides custom context</action>
+            <goal>Receive answers tailored to the specific conversation type and user background</goal>
+            <acceptance>System prompt adapts to selected profile; custom prompt text is appended to the base profile prompt</acceptance>
+        </UC-PROFILE-SELECT>
 
-  </UseCases>
-</RequirementsAnalysis>
+        <UC-VISION-ANALYSIS>
+            <actor>User</actor>
+            <action>Triggers manual or automatic screenshot capture during a session</action>
+            <goal>Get AI analysis of on-screen content (code, diagrams, slides) alongside audio context</goal>
+            <acceptance>Screenshot is captured from screen share stream, encoded as JPEG, sent to vision-capable model, and streamed response is displayed in overlay</acceptance>
+        </UC-VISION-ANALYSIS>
+
+        <UC-MIRROR-MODE>
+            <actor>User</actor>
+            <action>Toggles mirror mode via Ctrl+Shift+M hotkey</action>
+            <goal>Read AI responses reflected in a mirror or secondary display without the interviewer noticing</goal>
+            <acceptance>Response container CSS transform flips horizontally; toggle persists in preferences</acceptance>
+        </UC-MIRROR-MODE>
+
+        <UC-OVERLAY-CONTROL>
+            <actor>User</actor>
+            <action>Controls overlay window with global keyboard shortcuts</action>
+            <goal>Quickly show/hide, move, scroll, and toggle click-through on the hints overlay</goal>
+            <acceptance>Global shortcuts work across all apps: Ctrl+Arrow moves window, Ctrl+\ toggles visibility, Ctrl+M toggles click-through, Ctrl+Shift+E emergency erases all content</acceptance>
+        </UC-OVERLAY-CONTROL>
+
+        <UC-DIAGNOSTICS>
+            <actor>User</actor>
+            <action>Runs diagnostic tests from OpenRouter settings panel</action>
+            <goal>Verify WhisperX Docker connectivity, OpenRouter API key validity, and model availability before starting a session</goal>
+            <acceptance>Diagnostics panel shows pass/fail for each subsystem with latency and error details</acceptance>
+        </UC-DIAGNOSTICS>
+
+        <UC-EMERGENCY-ERASE>
+            <actor>User</actor>
+            <action>Presses Ctrl+Shift+E to instantly clear all displayed content</action>
+            <goal>Immediately hide AI assistance if the interviewer looks at the screen</goal>
+            <acceptance>All response history and transcription display is cleared within one frame; overlay becomes blank</acceptance>
+        </UC-EMERGENCY-ERASE>
+
+    </UseCases>
+
+    <!-- ═══════════════════════════════════════════════════════════════
+         FUNCTIONAL REQUIREMENTS
+         ═══════════════════════════════════════════════════════════════ -->
+    <FunctionalRequirements>
+
+        <!-- Audio Pipeline -->
+        <FR-AUDIO-CAPTURE>Capture system audio (speaker loopback) via Electron desktopCapturer and optionally microphone input</FR-AUDIO-CAPTURE>
+        <FR-AUDIO-RESAMPLE>Resample captured 24kHz mono PCM to 16kHz using linear interpolation with remainder carry-over</FR-AUDIO-RESAMPLE>
+        <FR-AUDIO-RING-BUFFER>Maintain a time-stamped ring buffer of PCM16k chunks with configurable lookback window (default 3s)</FR-AUDIO-RING-BUFFER>
+        <FR-CONTINUOUS-TRANSCRIPTION>Stream accumulated audio to WhisperX Docker (or local Whisper) at configurable intervals (default 500ms) with overlapping 3s chunks</FR-CONTINUOUS-TRANSCRIPTION>
+        <FR-HALLUCINATION-FILTER>Filter out common STT hallucination patterns (subtitles, subscribe, music, applause, short fragments) before adding to transcription buffer</FR-HALLUCINATION-FILTER>
+
+        <!-- Question Detection -->
+        <FR-ROLLING-WINDOW>Maintain a rolling transcription buffer of configurable duration (10-30s, default 15s) for question detection context</FR-ROLLING-WINDOW>
+        <FR-QUESTION-DETECTOR>Send rolling window text to a fast cheap LLM (default gpt-4o-mini via OpenRouter) at configurable frequency (500ms-2s) to detect new questions</FR-QUESTION-DETECTOR>
+        <FR-QUESTION-DEDUP>Deduplicate detected questions against the last 10 detected questions using case-insensitive string comparison</FR-QUESTION-DEDUP>
+
+        <!-- LLM Inference -->
+        <FR-OPENROUTER-CHAT>Send detected questions to configurable main LLM via OpenRouter API with streaming SSE response, conversation history (last 20 messages), and system prompt</FR-OPENROUTER-CHAT>
+        <FR-OPENROUTER-VISION>Send JPEG screenshots to a vision-capable model via OpenRouter for screen content analysis with streaming response</FR-OPENROUTER-VISION>
+        <FR-GEMINI-BYOK>Support Gemini API with user-provided API key for multimodal audio+vision inference</FR-GEMINI-BYOK>
+        <FR-CLOUD-MODE>Support managed cloud backend via WebSocket for users without API keys (usage-limited)</FR-CLOUD-MODE>
+        <FR-LOCAL-OLLAMA>Support fully local inference via Ollama with VAD-based speech detection</FR-LOCAL-OLLAMA>
+        <FR-GROQ-INFERENCE>Support Groq API as a fast inference backend with per-model character usage limits</FR-GROQ-INFERENCE>
+        <FR-THINKING-STRIP>Strip &lt;think&gt;...&lt;/think&gt; tags from model responses before display</FR-THINKING-STRIP>
+        <FR-STREAMING-DISPLAY>Stream LLM responses token-by-token to the overlay as they arrive via SSE</FR-STREAMING-DISPLAY>
+
+        <!-- STT Options -->
+        <FR-WHISPERX-DOCKER>Support WhisperX Docker container with configurable URL, model (large-v3, large-v3-turbo, medium, small), language, and Silero VAD</FR-WHISPERX-DOCKER>
+        <FR-LOCAL-WHISPER>Support local Whisper via @huggingface/transformers on CPU with model selection (tiny, base, small)</FR-LOCAL-WHISPER>
+        <FR-WAV-ENCODING>Convert PCM16k buffers to WAV format with proper RIFF header for WhisperX API upload</FR-WAV-ENCODING>
+
+        <!-- Overlay and UI -->
+        <FR-OVERLAY-WINDOW>Render transparent, frameless, always-on-top, content-protected Electron window as the overlay</FR-OVERLAY-WINDOW>
+        <FR-CLICK-THROUGH>Toggle mouse event pass-through (click-through mode) via global shortcut</FR-CLICK-THROUGH>
+        <FR-MIRROR-DISPLAY>Horizontally flip the response container via CSS transform for mirror reading</FR-MIRROR-DISPLAY>
+        <FR-GLOBAL-SHORTCUTS>Register configurable global keyboard shortcuts for window movement, visibility, click-through, screenshot, scroll, emergency erase, and mirror toggle</FR-GLOBAL-SHORTCUTS>
+        <FR-MARKDOWN-RENDER>Render AI responses with markdown formatting, syntax highlighting (highlight.js), bold, lists, and code blocks</FR-MARKDOWN-RENDER>
+        <FR-RESPONSE-HISTORY>Navigate between previous AI responses via Ctrl+[ and Ctrl+] shortcuts</FR-RESPONSE-HISTORY>
+
+        <!-- Configuration -->
+        <FR-PERSISTENT-STORAGE>Store configuration, credentials, preferences, keybinds, and usage limits in JSON files in OS-appropriate config directory</FR-PERSISTENT-STORAGE>
+        <FR-MODEL-BROWSER>Fetch and display available OpenRouter models grouped by provider with pricing info</FR-MODEL-BROWSER>
+        <FR-DETECTION-TUNING>Allow user to configure detection window size (10-30s), check frequency (500ms-2s), and STT interval (0.5-2s)</FR-DETECTION-TUNING>
+
+    </FunctionalRequirements>
+
+    <!-- ═══════════════════════════════════════════════════════════════
+         NON-FUNCTIONAL REQUIREMENTS
+         ═══════════════════════════════════════════════════════════════ -->
+    <NonFunctionalRequirements>
+
+        <NFR-LATENCY>End-to-end latency from question asked to first answer token displayed should be under 3 seconds with WhisperX Docker + fast OpenRouter model</NFR-LATENCY>
+        <NFR-STEALTH>Overlay window must be invisible to screen sharing: content-protected, hidden from taskbar (Windows), visible on all workspaces (macOS)</NFR-STEALTH>
+        <NFR-PRIVACY>API keys stored locally on disk, never transmitted except to their respective API endpoints; no telemetry</NFR-PRIVACY>
+        <NFR-CROSS-PLATFORM>Application must run on Windows, macOS, and Linux via Electron with platform-specific adaptations for audio capture and shortcuts</NFR-CROSS-PLATFORM>
+        <NFR-RESOURCE>Local Whisper runs on CPU; WhisperX Docker requires NVIDIA GPU with CUDA; overlay should consume minimal CPU when idle</NFR-RESOURCE>
+        <NFR-RESILIENCE>Session initialization validates API connectivity and STT availability before activating; graceful fallback on errors</NFR-RESILIENCE>
+        <NFR-CONVERSATION-LIMIT>Conversation history capped at 20 messages to control token usage and latency</NFR-CONVERSATION-LIMIT>
+
+    </NonFunctionalRequirements>
+
+</Requirements>

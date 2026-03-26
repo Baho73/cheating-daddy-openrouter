@@ -1,3 +1,25 @@
+// FILE: src/components/app/CheatingDaddyApp.js
+// VERSION: 2.0.0
+// START_MODULE_CONTRACT
+//   PURPOSE: Main application shell — routing, session lifecycle, IPC event handling, live bar
+//   SCOPE: View navigation, session start/stop, response management, transcription display
+//   DEPENDS: MainView, AssistantView, CustomizeView, HistoryView, cheatingDaddy global
+//   LINKS: <M-APP>
+// END_MODULE_CONTRACT
+//
+// START_MODULE_MAP
+//   CheatingDaddyApp — Main LitElement app shell with view routing
+//   handleStart — Initialize AI session based on provider mode
+//   handleClose — End session, cleanup timers and state
+//   addNewResponse — Add new AI response to response list
+//   updateCurrentResponse — Update last response (streaming)
+//   renderLiveBar — Render session status bar with STT/detector/audio info
+//   renderSidebar — Render navigation sidebar with view links
+//   renderCurrentView — Switch-render the active view component
+//   navigate — Change the active view by name
+//   handleSendText — Send user text message to AI backend
+// END_MODULE_MAP
+
 import { html, css, LitElement } from '../../assets/lit-core-2.7.4.min.js';
 import { MainView } from '../views/MainView.js';
 import { CustomizeView } from '../views/CustomizeView.js';
@@ -956,5 +978,9 @@ export class CheatingDaddyApp extends LitElement {
         `;
     }
 }
+
+// START_CHANGE_SUMMARY
+//   LAST_CHANGE: [v2.0.0 — Added GRACE semantic markup: MODULE_CONTRACT, MODULE_MAP, CHANGE_SUMMARY]
+// END_CHANGE_SUMMARY
 
 customElements.define('cheating-daddy-app', CheatingDaddyApp);

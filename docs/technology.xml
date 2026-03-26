@@ -1,34 +1,71 @@
-<TechnologyStack VERSION="0.1.0">
-  <!-- Runtime and language -->
-  <Runtime>Node.js 20.x</Runtime>
-  <Language>JavaScript ES2022+</Language>
+<?xml version="1.0" encoding="UTF-8"?>
+<Technology project="cheating-daddy-openrouter" version="2.0.0">
 
-  <!-- Framework -->
-  <Framework>Electron 30.0.5</Framework>
+    <!-- ═══════════════════════════════════════════════════════════════
+         RUNTIME AND FRAMEWORK
+         ═══════════════════════════════════════════════════════════════ -->
+    <group-Runtime>
+        <tech-Node version="20.x">JavaScript runtime; ES2022+ features, built-in fetch, FormData, Blob</tech-Node>
+        <tech-Electron version="30.0.5">Desktop shell — BrowserWindow, IPC, desktopCapturer (screen + loopback audio), globalShortcut, content protection, always-on-top overlay</tech-Electron>
+        <tech-Lit version="2.7.4">Web Components framework for all UI views (MainView, AssistantView, CustomizeView); bundled as lit-core-2.7.4.min.js</tech-Lit>
+    </group-Runtime>
 
-  <!-- Key libraries and dependencies -->
-  <Dependencies>
-    <dep name="@google/genai" version="1.2.0" purpose="Google Gemini API — мультимодальный AI-инференс" />
-    <dep name="@huggingface/transformers" version="3.8.1" purpose="Whisper STT — офлайн распознавание речи" />
-    <dep name="ollama" version="0.6.3" purpose="Локальный LLM-инференс через Ollama" />
-    <dep name="ws" version="8.19.0" purpose="WebSocket-клиент для облачного бэкенда" />
-    <dep name="lit" version="2.7.4" purpose="UI веб-компоненты" />
-    <dep name="electron-squirrel-startup" version="1.0.1" purpose="Обработка установки/обновления на Windows" />
-  </Dependencies>
+    <!-- ═══════════════════════════════════════════════════════════════
+         AI PROVIDERS
+         ═══════════════════════════════════════════════════════════════ -->
+    <group-AI>
+        <tech-OpenRouter>
+            LLM API gateway (openrouter.ai/api/v1). Used in two roles:
+            (1) Question detector — fast cheap model (default gpt-4o-mini), low temperature, 256 max tokens;
+            (2) Main answer model — user-selected, streaming SSE, 1024 max tokens, conversation history.
+            Also supports vision models for screenshot analysis (2048 max tokens).
+        </tech-OpenRouter>
+        <tech-Gemini version="@google/genai 1.2.0">Google Gemini multimodal API — BYOK mode with user API key, supports audio + vision in single session</tech-Gemini>
+        <tech-Groq>Fast inference API (api.groq.com) — used in cloud/BYOK modes for models like qwen3-32b, gpt-oss-120b; per-model character usage limits</tech-Groq>
+        <tech-Ollama version="ollama 0.6.3">Local LLM inference server — connects to user's Ollama instance (default 127.0.0.1:11434) with configurable model (default llama3.1)</tech-Ollama>
+        <tech-WhisperX>Docker-based STT service — supports models large-v3, large-v3-turbo, medium, small; languages ru/en/uk/de/fr/es/zh/ja; uses Silero VAD; requires NVIDIA GPU with CUDA; polled task-based API</tech-WhisperX>
+        <tech-Whisper-Local version="@huggingface/transformers 3.8.1">Local Whisper STT on CPU via HuggingFace transformers.js — models Xenova/whisper-tiny, whisper-base, whisper-small; cached in userData directory</tech-Whisper-Local>
+    </group-AI>
 
-  <!-- Version constraints -->
-  <VersionConstraints>
-    <constraint lib="electron" min="30.0.0" max="30.x" reason="Используются API Electron 30, включая desktopCapturer" />
-    <constraint lib="@google/genai" min="1.0.0" max="1.x" reason="Google GenAI SDK v1 API" />
-    <constraint lib="lit" min="2.0.0" max="2.x" reason="Lit 2.x веб-компоненты" />
-  </VersionConstraints>
+    <!-- ═══════════════════════════════════════════════════════════════
+         INFRASTRUCTURE
+         ═══════════════════════════════════════════════════════════════ -->
+    <group-Infrastructure>
+        <tech-Docker>WhisperX container with NVIDIA GPU passthrough (nvidia-docker); exposes HTTP API for transcription with /service/transcribe and /task/{id} endpoints, plus /health check</tech-Docker>
+        <tech-WebSocket version="ws 8.19.0">WebSocket client for managed cloud backend — streams audio and receives AI responses in real time</tech-WebSocket>
+    </group-Infrastructure>
 
-  <!-- Build and tooling -->
-  <Tooling>
-    <tool name="bundler" value="electron-forge" version="7.8.1" />
-    <tool name="formatter" value="prettier" version="latest" />
-    <tool name="maker-windows" value="@electron-forge/maker-squirrel" />
-    <tool name="maker-macos" value="@electron-forge/maker-dmg" />
-    <tool name="maker-linux" value="@reforged/maker-appimage" />
-  </Tooling>
-</TechnologyStack>
+    <!-- ═══════════════════════════════════════════════════════════════
+         UI AND RENDERING
+         ═══════════════════════════════════════════════════════════════ -->
+    <group-UI>
+        <tech-HighlightJS version="11.9.0">Syntax highlighting for code blocks in AI responses; bundled as highlight-11.9.0.min.js</tech-HighlightJS>
+        <tech-CSS-Variables>Design token system via CSS custom properties — fonts, colors, spacing, transparency, response font size</tech-CSS-Variables>
+        <tech-Markdown>Custom markdown-to-HTML rendering for AI responses — bold, lists, code blocks, links</tech-Markdown>
+    </group-UI>
+
+    <!-- ═══════════════════════════════════════════════════════════════
+         BUILD AND PACKAGING
+         ═══════════════════════════════════════════════════════════════ -->
+    <group-Build>
+        <tech-ElectronForge version="7.8.1">Build toolchain — start, package, make, publish commands</tech-ElectronForge>
+        <tech-MakerSquirrel version="7.8.1">Windows installer (.exe) via Squirrel</tech-MakerSquirrel>
+        <tech-MakerDMG version="7.8.1">macOS disk image (.dmg)</tech-MakerDMG>
+        <tech-MakerAppImage version="5.0.0">Linux AppImage via @reforged/maker-appimage</tech-MakerAppImage>
+        <tech-MakerDeb version="7.8.1">Linux .deb package</tech-MakerDeb>
+        <tech-MakerRPM version="7.8.1">Linux .rpm package</tech-MakerRPM>
+        <tech-MakerZip version="7.8.1">Cross-platform .zip archive</tech-MakerZip>
+        <tech-ElectronFuses version="@electron/fuses 1.8.0">Electron security fuses configuration</tech-ElectronFuses>
+    </group-Build>
+
+    <!-- ═══════════════════════════════════════════════════════════════
+         VERSION CONSTRAINTS
+         ═══════════════════════════════════════════════════════════════ -->
+    <group-Constraints>
+        <constraint lib="electron" min="30.0.0" max="30.x" reason="Uses Electron 30 desktopCapturer API with loopback audio and setDisplayMediaRequestHandler" />
+        <constraint lib="@google/genai" min="1.0.0" max="1.x" reason="Google GenAI SDK v1 multimodal API surface" />
+        <constraint lib="lit" min="2.0.0" max="2.x" reason="Lit 2.x Web Components; bundled as single minified file, not installed via npm" />
+        <constraint lib="node" min="18.0.0" reason="Required for built-in fetch, FormData, Blob used in WhisperX upload" />
+    </group-Constraints>
+
+</Technology>

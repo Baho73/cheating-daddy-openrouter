@@ -1,3 +1,19 @@
+// FILE: src/utils/window.js
+// VERSION: 2.0.0
+// START_MODULE_CONTRACT
+//   PURPOSE: Electron BrowserWindow management — creation, positioning, global shortcuts
+//   SCOPE: Window create/resize, click-through toggle, keyboard shortcuts, movement
+//   DEPENDS: electron (BrowserWindow, globalShortcut, screen), storage.js
+//   LINKS: <M-WINDOW>
+// END_MODULE_CONTRACT
+//
+// START_MODULE_MAP
+//   createWindow — Create and configure the main BrowserWindow
+//   getDefaultKeybinds — Return platform-specific default keybind map
+//   updateGlobalShortcuts — Register/re-register all global keyboard shortcuts
+//   setupWindowIpcHandlers — Register window-related IPC handlers (resize, visibility)
+// END_MODULE_MAP
+
 const { BrowserWindow, globalShortcut, ipcMain, screen } = require('electron');
 const path = require('node:path');
 const storage = require('../storage');
@@ -372,6 +388,10 @@ function setupWindowIpcHandlers(mainWindow, sendToRenderer, geminiSessionRef) {
         return { success: true };
     });
 }
+
+// START_CHANGE_SUMMARY
+//   LAST_CHANGE: [v2.0.0 — Added GRACE semantic markup: MODULE_CONTRACT, MODULE_MAP, CHANGE_SUMMARY]
+// END_CHANGE_SUMMARY
 
 module.exports = {
     createWindow,

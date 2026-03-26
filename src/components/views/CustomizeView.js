@@ -1,3 +1,23 @@
+// FILE: src/components/views/CustomizeView.js
+// VERSION: 2.0.0
+// START_MODULE_CONTRACT
+//   PURPOSE: Appearance and keybind settings — font size, mirror mode, keyboard shortcuts
+//   SCOPE: Font size slider, mirror toggle, keybind configuration, settings reset
+//   DEPENDS: Lit 2.7.4, cheatingDaddy global (storage)
+//   LINKS: <M-CUSTOMIZE-VIEW>
+// END_MODULE_CONTRACT
+//
+// START_MODULE_MAP
+//   CustomizeView — LitElement view for appearance and keyboard shortcut settings
+//   _loadFromStorage — Load persisted preferences and keybinds
+//   handleFontSizeChange — Update and persist font size
+//   handleMirrorModeChange — Toggle and persist mirror/teleprompter mode
+//   handleKeybindInput — Capture keyboard shortcut input
+//   resetKeybinds — Restore default keyboard shortcuts
+//   restoreAllSettings — Reset all preferences to factory defaults
+//   clearLocalData — Wipe all local data and quit application
+// END_MODULE_MAP
+
 import { html, css, LitElement } from '../../assets/lit-core-2.7.4.min.js';
 import { unifiedPageStyles } from './sharedPageStyles.js';
 
@@ -745,5 +765,9 @@ export class CustomizeView extends LitElement {
         `;
     }
 }
+
+// START_CHANGE_SUMMARY
+//   LAST_CHANGE: [v2.0.0 — Added GRACE semantic markup: MODULE_CONTRACT, MODULE_MAP, CHANGE_SUMMARY]
+// END_CHANGE_SUMMARY
 
 customElements.define('customize-view', CustomizeView);

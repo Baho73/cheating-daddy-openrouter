@@ -1,3 +1,25 @@
+// FILE: src/components/views/AssistantView.js
+// VERSION: 2.0.0
+// START_MODULE_CONTRACT
+//   PURPOSE: Session overlay view displaying AI responses with markdown rendering
+//   SCOPE: Response display, navigation between responses, text input, screen analysis button
+//   DEPENDS: Lit 2.7.4, marked.js (markdown), ipcRenderer
+//   LINKS: <M-ASSISTANT-VIEW>
+// END_MODULE_CONTRACT
+//
+// START_MODULE_MAP
+//   AssistantView — LitElement view for displaying AI assistant responses
+//   getCurrentResponse — Return the current response text or placeholder
+//   renderMarkdown — Parse markdown content via marked.js
+//   wrapWordsInSpans — Wrap text nodes in span elements for animation
+//   navigateToPreviousResponse — Go to previous response in list
+//   navigateToNextResponse — Go to next response in list
+//   handleScreenAnswer — Trigger manual screenshot + screen analysis
+//   handleSendText — Send typed user message to AI
+//   _startWaveformAnimation — Animate analyze button border while analyzing
+//   _stopWaveformAnimation — Stop and clear the analyze animation
+// END_MODULE_MAP
+
 import { html, css, LitElement } from '../../assets/lit-core-2.7.4.min.js';
 
 export class AssistantView extends LitElement {
@@ -709,5 +731,9 @@ export class AssistantView extends LitElement {
         `;
     }
 }
+
+// START_CHANGE_SUMMARY
+//   LAST_CHANGE: [v2.0.0 — Added GRACE semantic markup: MODULE_CONTRACT, MODULE_MAP, CHANGE_SUMMARY]
+// END_CHANGE_SUMMARY
 
 customElements.define('assistant-view', AssistantView);

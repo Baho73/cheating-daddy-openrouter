@@ -1,3 +1,29 @@
+// FILE: src/utils/renderer.js
+// VERSION: 2.0.0
+// START_MODULE_CONTRACT
+//   PURPOSE: Renderer process bridge — initializes AI sessions, manages audio capture, exposes global API
+//   SCOPE: Provider initialization (Cloud/Local/OpenRouter/BYOK), screen/audio capture, model fetching
+//   DEPENDS: storage.js, ipcRenderer, navigator.mediaDevices
+//   LINKS: <M-RENDERER>
+// END_MODULE_CONTRACT
+//
+// START_MODULE_MAP
+//   storage — IPC-based storage API wrapper object
+//   initializeGemini — Start BYOK Gemini session via IPC
+//   initializeCloud — Start cloud-hosted session via IPC
+//   initializeLocal — Start local Ollama session via IPC
+//   initializeOpenRouter — Start OpenRouter session via IPC
+//   fetchOpenRouterModels — Fetch model list from OpenRouter API
+//   startCapture — Begin screen/audio capture with platform-specific paths
+//   stopCapture — Stop all media capture and cleanup resources
+//   captureScreenshot — Capture and send automated screenshot
+//   captureManualScreenshot — Capture on-demand screenshot with prompt
+//   sendTextMessage — Send user text to AI backend
+//   handleShortcut — Route keyboard shortcuts based on current view
+//   theme — Theme system: load/save/apply color palettes
+//   cheatingDaddy — Consolidated global API object exposed on window
+// END_MODULE_MAP
+
 // renderer.js
 const { ipcRenderer } = require('electron');
 

@@ -449,10 +449,14 @@ async function startCapture(screenshotIntervalSeconds = 5, imageQuality = 'mediu
                 },
             });
 
-            console.log('Windows capture started with loopback audio');
+            const audioTracks = mediaStream.getAudioTracks();
+            console.log('Windows capture started — audio tracks:', audioTracks.length, audioTracks.map(t => `${t.label} (${t.readyState})`));
 
-            // Setup audio processing for Windows loopback audio only
-            setupWindowsLoopbackProcessing();
+            if (audioTracks.length > 0) {
+                setupWindowsLoopbackProcessing();
+            } else {
+                console.warn('WARNING: No audio tracks in display media! System audio will not be captured.');
+            }
 
             if (audioMode === 'mic_only' || audioMode === 'both') {
                 let micStream = null;

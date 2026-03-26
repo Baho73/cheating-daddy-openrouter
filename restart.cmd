@@ -1,5 +1,7 @@
 @echo off
 chcp 65001 >nul
+set LANG=en_US.UTF-8
+set PYTHONIOENCODING=utf-8
 cd /d "%~dp0"
 
 echo Stopping Cheating Daddy...
@@ -24,4 +26,4 @@ if %errorlevel%==0 (
 )
 
 echo Starting Cheating Daddy...
-start "" node_modules\.bin\electron .
+node_modules\.bin\electron .

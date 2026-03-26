@@ -20,7 +20,10 @@ if (require('electron-squirrel-startup')) {
 // Fix Windows console encoding for Cyrillic
 if (process.platform === 'win32') {
     const { execSync } = require('child_process');
-    try { execSync('chcp 65001', { stdio: 'ignore' }); } catch {}
+    try { execSync('chcp 65001', { stdio: 'pipe' }); } catch {}
+    // Force UTF-8 output encoding
+    if (process.stdout.setEncoding) process.stdout.setEncoding('utf-8');
+    if (process.stderr.setEncoding) process.stderr.setEncoding('utf-8');
 }
 
 const { app, BrowserWindow, shell, ipcMain } = require('electron');

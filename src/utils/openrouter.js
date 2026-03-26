@@ -28,6 +28,11 @@
 const { BrowserWindow } = require('electron');
 const { getSystemPrompt } = require('./prompts');
 const { sendToRenderer, initializeNewSession, saveConversationTurn } = require('./gemini');
+const {
+    pcm16ToFloat32, pcm16ToWavBuffer, resample24kTo16k: _resample24kTo16k,
+    isHallucination, stripThinkingTags, buildDetectorPrompt: _buildDetectorPrompt,
+    parseSSEChunk,
+} = require('./audio-helpers');
 
 // ── State ──
 
@@ -68,25 +73,9 @@ let resampleRemainder = Buffer.alloc(0);
 
 // START_BLOCK_AUDIO_RESAMPLING
 function resample24kTo16k(inputBuffer) {
-    const combined = Buffer.concat([resampleRemainder, inputBuffer]);
-    const inputSamples = Math.floor(combined.length / 2);
-    const outputSamples = Math.floor((inputSamples * 2) / 3);
-    const outputBuffer = Buffer.alloc(outputSamples * 2);
-
-    for (let i = 0; i < outputSamples; i++) {
-        const srcPos = (i * 3) / 2;
-        const srcIndex = Math.floor(srcPos);
-        const frac = srcPos - srcIndex;
-        const s0 = combined.readInt16LE(srcIndex * 2);
-        const s1 = srcIndex + 1 < inputSamples ? combined.readInt16LE((srcIndex + 1) * 2) : s0;
-        const interpolated = Math.round(s0 + frac * (s1 - s0));
-        outputBuffer.writeInt16LE(Math.max(-32768, Math.min(32767, interpolated)), i * 2);
-    }
-
-    const consumedInputSamples = Math.ceil((outputSamples * 3) / 2);
-    const remainderStart = consumedInputSamples * 2;
-    resampleRemainder = remainderStart < combined.length ? combined.slice(remainderStart) : Buffer.alloc(0);
-    return outputBuffer;
+    const result = _resample24kTo16k(inputBuffer, resampleRemainder);
+    resampleRemainder = result.remainder;
+    return result.output;
 }
 // END_BLOCK_AUDIO_RESAMPLING
 
@@ -123,15 +112,6 @@ async function loadWhisperPipeline(modelName) {
     }
 }
 
-function pcm16ToFloat32(pcm16Buffer) {
-    const samples = pcm16Buffer.length / 2;
-    const float32 = new Float32Array(samples);
-    for (let i = 0; i < samples; i++) {
-        float32[i] = pcm16Buffer.readInt16LE(i * 2) / 32768;
-    }
-    return float32;
-}
-
 async function transcribeAudio(pcm16kBuffer) {
     if (!whisperPipeline) return null;
     try {
@@ -152,25 +132,6 @@ async function transcribeAudio(pcm16kBuffer) {
 }
 
 // ── WhisperX Docker STT ──
-
-function pcm16ToWavBuffer(pcm16Buffer, sampleRate = 16000) {
-    const numSamples = pcm16Buffer.length / 2;
-    const header = Buffer.alloc(44);
-    header.write('RIFF', 0);
-    header.writeUInt32LE(36 + pcm16Buffer.length, 4);
-    header.write('WAVE', 8);
-    header.write('fmt ', 12);
-    header.writeUInt32LE(16, 16);
-    header.writeUInt16LE(1, 20); // PCM
-    header.writeUInt16LE(1, 22); // mono
-    header.writeUInt32LE(sampleRate, 24);
-    header.writeUInt32LE(sampleRate * 2, 28);
-    header.writeUInt16LE(2, 32);
-    header.writeUInt16LE(16, 34);
-    header.write('data', 36);
-    header.writeUInt32LE(pcm16Buffer.length, 40);
-    return Buffer.concat([header, pcm16Buffer]);
-}
 
 async function transcribeWithWhisperX(pcm16kBuffer) {
     if (!whisperXUrl) return null;
@@ -221,23 +182,7 @@ async function transcribeWithWhisperX(pcm16kBuffer) {
 
 // ── Continuous Transcription ──
 
-// START_BLOCK_HALLUCINATION_FILTER
-// Whisper hallucination filter — common patterns when no real speech
-const HALLUCINATION_PATTERNS = [
-    /субтитры/i, /продолжение следу/i, /спасибо за просмотр/i, /подпис/i,
-    /subtitles/i, /subscribe/i, /thanks for watching/i, /like and subscribe/i,
-    /\bDimaTorzok\b/i, /\bAmara\.org\b/i, /\bwww\./i,
-    /^\.+$/, /^\[.*\]$/, /^INAUDIBLE$/i,
-    /продолжение следует/i, /музыка/i, /аплодисменты/i,
-    /music/i, /applause/i, /\blaughter\b/i,
-];
-
-function isHallucination(text) {
-    const t = text.trim();
-    if (t.length < 3) return true;
-    return HALLUCINATION_PATTERNS.some(p => p.test(t));
-}
-// END_BLOCK_HALLUCINATION_FILTER
+// isHallucination imported from audio-helpers.js
 
 // START_CONTRACT: transcribeAccumulatedAudio
 //   PURPOSE: Grab audio from ring buffer, transcribe via STT, push valid text to continuous buffer
@@ -297,30 +242,7 @@ async function transcribeAccumulatedAudio() {
 // END_CONTRACT: buildDetectorPrompt
 // START_BLOCK_DETECTOR_PROMPT_BUILD
 function buildDetectorPrompt() {
-    const fullText = continuousBuffer.map(e => e.text).join(' ');
-    if (!fullText.trim()) return null;
-
-    const recentQuestions = detectedQuestions.slice(-3);
-    const recentList = recentQuestions.length > 0
-        ? recentQuestions.map((q, i) => `${i + 1}. ${q}`).join('\n')
-        : '(none yet)';
-
-    return `You are a question detector for a live interview/meeting. Below is the last ${windowSizeSec} seconds of transcribed speech.
-
-Your task: identify if there is a NEW question being asked to the candidate/participant.
-
-Rules:
-- Return ONLY the question text, nothing else
-- If there is no new question, return exactly: ---
-- If the question is the same or very similar to a recently detected one, return: ---
-- Extract the COMPLETE question, not fragments
-- The question may be in any language — preserve the original language
-
-Recently detected questions (do NOT repeat these):
-${recentList}
-
-Transcription:
-"${fullText}"`;
+    return _buildDetectorPrompt(continuousBuffer, detectedQuestions, windowSizeSec);
 }
 // END_BLOCK_DETECTOR_PROMPT_BUILD
 
@@ -412,9 +334,7 @@ async function detectQuestion() {
 //   SIDE_EFFECTS: Appends to conversationHistory, sends streamed tokens to renderer, saves turn
 // END_CONTRACT: sendToOpenRouter
 
-function stripThinkingTags(text) {
-    return text.replace(/<think>[\s\S]*?<\/think>/g, '').trim();
-}
+// stripThinkingTags imported from audio-helpers.js
 
 async function sendToOpenRouter(text) {
     if (!openrouterApiKey || !openrouterModel) {

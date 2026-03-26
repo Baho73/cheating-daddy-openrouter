@@ -5,9 +5,8 @@ const storage = require('../storage');
 let mouseEventsIgnored = false;
 
 function createWindow(sendToRenderer, geminiSessionRef) {
-    // Get layout preference (default to 'normal')
-    let windowWidth = 1100;
-    let windowHeight = 800;
+    let windowWidth = 1024;
+    let windowHeight = 580;
 
     const mainWindow = new BrowserWindow({
         width: windowWidth,
@@ -108,6 +107,7 @@ function getDefaultKeybinds() {
         scrollUp: isMac ? 'Cmd+Shift+Up' : 'Ctrl+Shift+Up',
         scrollDown: isMac ? 'Cmd+Shift+Down' : 'Ctrl+Shift+Down',
         emergencyErase: isMac ? 'Cmd+Shift+E' : 'Ctrl+Shift+E',
+        toggleMirror: isMac ? 'Cmd+Shift+M' : 'Ctrl+Shift+M',
     };
 }
 
@@ -294,6 +294,19 @@ function updateGlobalShortcuts(keybinds, mainWindow, sendToRenderer, geminiSessi
             console.log(`Registered emergencyErase: ${keybinds.emergencyErase}`);
         } catch (error) {
             console.error(`Failed to register emergencyErase (${keybinds.emergencyErase}):`, error);
+        }
+    }
+
+    // Register toggle mirror shortcut
+    if (keybinds.toggleMirror) {
+        try {
+            globalShortcut.register(keybinds.toggleMirror, () => {
+                console.log('Toggle mirror mode triggered');
+                sendToRenderer('toggle-mirror-mode');
+            });
+            console.log(`Registered toggleMirror: ${keybinds.toggleMirror}`);
+        } catch (error) {
+            console.error(`Failed to register toggleMirror (${keybinds.toggleMirror}):`, error);
         }
     }
 }

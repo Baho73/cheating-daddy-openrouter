@@ -1,0 +1,230 @@
+<DevelopmentPlan VERSION="0.1.0">
+  <Modules>
+
+    <M-STORAGE NAME="Storage" TYPE="DATA_LAYER" LAYER="0" ORDER="1">
+      <contract>
+        <purpose>Персистентное JSON-хранилище для конфигурации, credentials, настроек и истории сессий</purpose>
+        <inputs>
+          <param name="key" type="string" />
+          <param name="value" type="any" />
+        </inputs>
+        <outputs>
+          <param name="config" type="object" />
+        </outputs>
+        <errors>
+          <error code="STORAGE_READ_ERROR" />
+          <error code="STORAGE_WRITE_ERROR" />
+        </errors>
+      </contract>
+      <interface>
+        <export-getConfig PURPOSE="Чтение конфигурации" />
+        <export-setConfig PURPOSE="Запись конфигурации" />
+        <export-getHistory PURPOSE="Получение истории сессий" />
+      </interface>
+      <depends>none</depends>
+    </M-STORAGE>
+
+    <M-PROMPTS NAME="Prompts" TYPE="UTILITY" LAYER="0" ORDER="2">
+      <contract>
+        <purpose>Системные промпты для различных профилей разговоров</purpose>
+        <inputs>
+          <param name="profile" type="string" />
+          <param name="language" type="string" />
+        </inputs>
+        <outputs>
+          <param name="systemPrompt" type="string" />
+        </outputs>
+        <errors />
+      </contract>
+      <interface>
+        <export-getSystemPrompt PURPOSE="Получение промпта по профилю и языку" />
+      </interface>
+      <depends>none</depends>
+    </M-PROMPTS>
+
+    <M-WINDOW NAME="Window Management" TYPE="UTILITY" LAYER="0" ORDER="3">
+      <contract>
+        <purpose>Создание и управление Electron BrowserWindow с overlay-режимом</purpose>
+        <inputs>
+          <param name="options" type="BrowserWindowOptions" />
+        </inputs>
+        <outputs>
+          <param name="window" type="BrowserWindow" />
+        </outputs>
+        <errors>
+          <error code="WINDOW_CREATE_ERROR" />
+        </errors>
+      </contract>
+      <interface>
+        <export-createMainWindow PURPOSE="Создание главного overlay-окна" />
+        <export-registerShortcuts PURPOSE="Регистрация глобальных горячих клавиш" />
+      </interface>
+      <depends>none</depends>
+    </M-WINDOW>
+
+    <M-GEMINI NAME="Gemini Integration" TYPE="INTEGRATION" LAYER="1" ORDER="1">
+      <contract>
+        <purpose>Google Gemini Live API — мультимодальные AI-сессии с аудио и скриншотами</purpose>
+        <inputs>
+          <param name="apiKey" type="string" />
+          <param name="audioChunk" type="Buffer" />
+          <param name="screenshot" type="string" />
+        </inputs>
+        <outputs>
+          <param name="response" type="string" />
+        </outputs>
+        <errors>
+          <error code="GEMINI_AUTH_ERROR" />
+          <error code="GEMINI_RATE_LIMIT" />
+          <error code="GEMINI_SESSION_ERROR" />
+        </errors>
+      </contract>
+      <interface>
+        <export-startSession PURPOSE="Инициализация Gemini Live сессии" />
+        <export-sendAudio PURPOSE="Отправка аудио в сессию" />
+        <export-sendScreenshot PURPOSE="Отправка скриншота для анализа" />
+      </interface>
+      <depends>M-STORAGE, M-PROMPTS</depends>
+    </M-GEMINI>
+
+    <M-CLOUD NAME="Cloud Backend" TYPE="INTEGRATION" LAYER="1" ORDER="2">
+      <contract>
+        <purpose>WebSocket-клиент для облачного AI-бэкенда</purpose>
+        <inputs>
+          <param name="token" type="string" />
+          <param name="audioData" type="Buffer" />
+          <param name="screenshotData" type="string" />
+        </inputs>
+        <outputs>
+          <param name="response" type="string" />
+        </outputs>
+        <errors>
+          <error code="CLOUD_CONNECTION_ERROR" />
+          <error code="CLOUD_AUTH_ERROR" />
+        </errors>
+      </contract>
+      <interface>
+        <export-connectCloud PURPOSE="Установка WebSocket-соединения" />
+        <export-sendData PURPOSE="Отправка данных через WebSocket" />
+      </interface>
+      <depends>M-STORAGE, M-PROMPTS</depends>
+    </M-CLOUD>
+
+    <M-LOCALAI NAME="Local AI" TYPE="INTEGRATION" LAYER="1" ORDER="3">
+      <contract>
+        <purpose>Локальный AI — Ollama LLM + Whisper STT с Voice Activity Detection</purpose>
+        <inputs>
+          <param name="audioBuffer" type="Float32Array" />
+          <param name="screenshot" type="string" />
+          <param name="model" type="string" />
+        </inputs>
+        <outputs>
+          <param name="transcription" type="string" />
+          <param name="response" type="string" />
+        </outputs>
+        <errors>
+          <error code="OLLAMA_CONNECTION_ERROR" />
+          <error code="WHISPER_INIT_ERROR" />
+        </errors>
+      </contract>
+      <interface>
+        <export-initWhisper PURPOSE="Загрузка Whisper модели" />
+        <export-processAudio PURPOSE="VAD + ресемплинг + транскрипция" />
+        <export-queryOllama PURPOSE="Запрос к Ollama" />
+      </interface>
+      <depends>M-STORAGE, M-PROMPTS</depends>
+    </M-LOCALAI>
+
+    <M-MAIN NAME="Main Process" TYPE="ENTRY_POINT" LAYER="2" ORDER="1">
+      <contract>
+        <purpose>Electron main process — точка входа, IPC-обработчики, жизненный цикл приложения</purpose>
+        <inputs>
+          <param name="electronApp" type="App" />
+        </inputs>
+        <outputs />
+        <errors>
+          <error code="APP_INIT_ERROR" />
+        </errors>
+      </contract>
+      <interface>
+        <export-createWindow PURPOSE="Создание главного окна" />
+        <export-setupIPC PURPOSE="Регистрация IPC-обработчиков" />
+      </interface>
+      <depends>M-WINDOW, M-GEMINI, M-CLOUD, M-LOCALAI, M-STORAGE, M-PROMPTS</depends>
+    </M-MAIN>
+
+    <M-UI-APP NAME="App Shell" TYPE="UI_COMPONENT" LAYER="2" ORDER="2">
+      <contract>
+        <purpose>Корневой Lit веб-компонент — роутинг и состояние приложения</purpose>
+        <inputs />
+        <outputs />
+        <errors />
+      </contract>
+      <interface>
+        <export-CheatingDaddyApp PURPOSE="Корневой компонент приложения" />
+      </interface>
+      <depends>M-UI-VIEWS</depends>
+    </M-UI-APP>
+
+    <M-UI-VIEWS NAME="Views" TYPE="UI_COMPONENT" LAYER="1" ORDER="4">
+      <contract>
+        <purpose>Lit-компоненты представлений — экраны приложения</purpose>
+        <inputs />
+        <outputs />
+        <errors />
+      </contract>
+      <interface>
+        <export-MainView PURPOSE="Главный экран сессии" />
+        <export-AssistantView PURPOSE="Отображение AI-ответов" />
+        <export-CustomizeView PURPOSE="Настройки приложения" />
+        <export-HistoryView PURPOSE="История сессий" />
+        <export-AICustomizeView PURPOSE="Настройка AI-моделей" />
+        <export-OnboardingView PURPOSE="Первый запуск" />
+      </interface>
+      <depends>M-STORAGE</depends>
+    </M-UI-VIEWS>
+
+  </Modules>
+
+  <DataFlow>
+
+    <DF-AI-SESSION NAME="AI Session Flow" TRIGGER="User starts a session">
+      <step-1>User выбирает профиль и нажимает Start</step-1>
+      <step-2>Main process определяет активный AI-провайдер (Gemini/Cloud/Local)</step-2>
+      <step-3>Инициализируется сессия с системным промптом из M-PROMPTS</step-3>
+      <step-4>Запускается захват аудио и периодический захват скриншотов</step-4>
+      <step-5>Аудио/скриншоты отправляются AI-провайдеру</step-5>
+      <step-6>AI-ответы передаются в renderer через IPC</step-6>
+      <step-7>AssistantView отображает ответы в overlay-окне</step-7>
+    </DF-AI-SESSION>
+
+    <DF-PROVIDER-SWITCH NAME="Provider Switch Flow" TRIGGER="User changes AI provider">
+      <step-1>User выбирает провайдер в AICustomizeView</step-1>
+      <step-2>Настройки сохраняются в M-STORAGE</step-2>
+      <step-3>При следующей сессии используется новый провайдер</step-3>
+    </DF-PROVIDER-SWITCH>
+
+  </DataFlow>
+
+  <ImplementationOrder>
+
+    <Phase-1 name="Foundation" status="done">
+      <step-1 module="M-STORAGE">Персистентное хранилище конфигурации</step-1>
+      <step-2 module="M-PROMPTS">Системные промпты для профилей</step-2>
+      <step-3 module="M-WINDOW">Создание overlay-окна с горячими клавишами</step-3>
+    </Phase-1>
+
+    <Phase-2 name="AI Integrations" status="done">
+      <step-1 module="M-GEMINI">Google Gemini Live API интеграция</step-1>
+      <step-2 module="M-CLOUD">WebSocket-клиент для облачного бэкенда</step-2>
+      <step-3 module="M-LOCALAI">Ollama + Whisper локальный пайплайн</step-3>
+    </Phase-2>
+
+    <Phase-3 name="Application Layer" status="done">
+      <step-1 module="M-MAIN">Electron main process с IPC</step-1>
+      <step-2 module="M-UI-VIEWS">UI-компоненты представлений</step-2>
+      <step-3 module="M-UI-APP">Корневой компонент приложения</step-3>
+    </Phase-3>
+
+  </ImplementationOrder>
+</DevelopmentPlan>

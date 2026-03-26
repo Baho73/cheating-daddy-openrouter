@@ -303,6 +303,17 @@ export class CheatingDaddyApp extends LitElement {
             color: var(--text-primary);
         }
 
+        .live-bar-tag {
+            font-size: 9px;
+            color: var(--text-muted);
+            font-family: var(--font-mono);
+            background: var(--bg-elevated);
+            border: 1px solid var(--border);
+            border-radius: 3px;
+            padding: 1px 4px;
+            white-space: nowrap;
+        }
+
         /* Content inner */
         .content-inner {
             flex: 1;
@@ -363,6 +374,8 @@ export class CheatingDaddyApp extends LitElement {
         _storageLoaded: { state: true },
         _updateAvailable: { state: true },
         _whisperDownloading: { state: true },
+        _sessionInfo: { state: true },
+        _audioMode: { state: true },
     };
 
     constructor() {
@@ -388,6 +401,8 @@ export class CheatingDaddyApp extends LitElement {
         this._timerInterval = null;
         this._updateAvailable = false;
         this._whisperDownloading = false;
+        this._sessionInfo = null;
+        this._audioMode = 'speaker_only';
         this._localVersion = '';
 
         this._loadFromStorage();
@@ -445,12 +460,32 @@ export class CheatingDaddyApp extends LitElement {
 
         if (window.require) {
             const { ipcRenderer } = window.require('electron');
-            ipcRenderer.on('new-response', (_, response) => this.addNewResponse(response));
-            ipcRenderer.on('update-response', (_, response) => this.updateCurrentResponse(response));
+            ipcRenderer.on('show-transcription', (_, text) => {
+                this._lastTranscription = text;
+                this.addNewResponse(`**Q:** ${text}\n\n---\n\n`);
+            });
+            ipcRenderer.on('new-response', (_, response) => {
+                const prefix = this._lastTranscription ? `**Q:** ${this._lastTranscription}\n\n---\n\n` : '';
+                this.updateCurrentResponse(prefix + response);
+            });
+            ipcRenderer.on('update-response', (_, response) => {
+                const prefix = this._lastTranscription ? `**Q:** ${this._lastTranscription}\n\n---\n\n` : '';
+                this.updateCurrentResponse(prefix + response);
+            });
             ipcRenderer.on('update-status', (_, status) => this.setStatus(status));
+            ipcRenderer.on('session-info', (_, info) => {
+                this._sessionInfo = info;
+                this.requestUpdate();
+            });
             ipcRenderer.on('click-through-toggled', (_, isEnabled) => { this._isClickThrough = isEnabled; });
             ipcRenderer.on('reconnect-failed', (_, data) => this.addNewResponse(data.message));
             ipcRenderer.on('whisper-downloading', (_, downloading) => { this._whisperDownloading = downloading; });
+            ipcRenderer.on('toggle-mirror-mode', async () => {
+                const prefs = await cheatingDaddy.storage.getPreferences();
+                const newVal = !(prefs.mirrorMode ?? false);
+                await cheatingDaddy.storage.updatePreference('mirrorMode', newVal);
+                document.documentElement.style.setProperty('--response-mirror', newVal ? 'scaleX(-1)' : 'none');
+            });
         }
     }
 
@@ -459,12 +494,15 @@ export class CheatingDaddyApp extends LitElement {
         this._stopTimer();
         if (window.require) {
             const { ipcRenderer } = window.require('electron');
+            ipcRenderer.removeAllListeners('show-transcription');
             ipcRenderer.removeAllListeners('new-response');
             ipcRenderer.removeAllListeners('update-response');
             ipcRenderer.removeAllListeners('update-status');
+            ipcRenderer.removeAllListeners('session-info');
             ipcRenderer.removeAllListeners('click-through-toggled');
             ipcRenderer.removeAllListeners('reconnect-failed');
             ipcRenderer.removeAllListeners('whisper-downloading');
+            ipcRenderer.removeAllListeners('toggle-mirror-mode');
         }
     }
 
@@ -538,6 +576,7 @@ export class CheatingDaddyApp extends LitElement {
                 await ipcRenderer.invoke('close-session');
             }
             this.sessionActive = false;
+            this._sessionInfo = null;
             this._stopTimer();
             this.currentView = 'main';
         } else {
@@ -595,6 +634,23 @@ export class CheatingDaddyApp extends LitElement {
                 }
                 return;
             }
+        } else if (providerMode === 'openrouter') {
+            const apiKey = await cheatingDaddy.storage.getOpenRouterApiKey();
+            if (!apiKey || apiKey.trim() === '') {
+                const mainView = this.shadowRoot.querySelector('main-view');
+                if (mainView && mainView.triggerApiKeyError) {
+                    mainView.triggerApiKeyError();
+                }
+                return;
+            }
+            const success = await cheatingDaddy.initializeOpenRouter(this.selectedProfile);
+            if (!success) {
+                const mainView = this.shadowRoot.querySelector('main-view');
+                if (mainView && mainView.triggerApiKeyError) {
+                    mainView.triggerApiKeyError();
+                }
+                return;
+            }
         } else {
             const apiKey = await cheatingDaddy.storage.getApiKey();
             if (!apiKey || apiKey === '') {
@@ -607,6 +663,8 @@ export class CheatingDaddyApp extends LitElement {
 
             await cheatingDaddy.initializeGemini(this.selectedProfile, this.selectedLanguage);
         }
+
+        this._audioMode = (await cheatingDaddy.storage.getPreferences()).audioMode || 'speaker_only';
 
         cheatingDaddy.startCapture(this.selectedScreenshotInterval, this.selectedImageQuality);
         this.responses = [];
@@ -851,6 +909,8 @@ export class CheatingDaddyApp extends LitElement {
                 </div>
                 <div class="live-bar-center">
                     ${profileLabels[this.selectedProfile] || 'Session'}
+                    ${this._sessionInfo ? html`<span class="live-bar-tag">${this._sessionInfo.stt}</span>` : ''}
+                    <span class="live-bar-tag">${this._audioMode === 'both' ? 'SPK+MIC' : this._audioMode === 'mic_only' ? 'MIC' : 'SPK'}</span>
                 </div>
                 <div class="live-bar-right">
                     ${this.statusText ? html`<span class="live-bar-text">${this.statusText}</span>` : ''}

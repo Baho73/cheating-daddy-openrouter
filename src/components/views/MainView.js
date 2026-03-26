@@ -180,6 +180,98 @@ export class MainView extends LitElement {
             text-decoration: underline;
         }
 
+        .model-label-row {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+
+        .diag-section {
+            border: 1px solid var(--border);
+            border-radius: var(--radius-sm);
+            padding: var(--space-sm);
+            margin-top: var(--space-xs);
+        }
+
+        .diag-title {
+            font-size: var(--font-size-sm);
+            font-weight: var(--font-weight-semibold);
+            color: var(--text-primary);
+            margin-bottom: var(--space-xs);
+        }
+
+        .diag-row {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 4px 0;
+            font-size: var(--font-size-xs);
+            border-bottom: 1px solid var(--border);
+        }
+
+        .diag-row:last-child {
+            border-bottom: none;
+        }
+
+        .diag-label {
+            color: var(--text-secondary);
+        }
+
+        .diag-value {
+            font-family: var(--font-mono);
+            font-size: 11px;
+        }
+
+        .diag-ok { color: #4caf50; }
+        .diag-warn { color: #ff9800; }
+        .diag-err { color: #f44336; }
+        .diag-loading { color: var(--text-muted); }
+
+        .diag-btn {
+            background: var(--bg-elevated);
+            border: 1px solid var(--border);
+            color: var(--text-secondary);
+            font-size: var(--font-size-xs);
+            padding: 4px 10px;
+            border-radius: var(--radius-sm);
+            cursor: pointer;
+            transition: all var(--transition);
+        }
+
+        .diag-btn:hover {
+            color: var(--text-primary);
+            border-color: var(--text-secondary);
+        }
+
+        .diag-btn:disabled {
+            opacity: 0.5;
+            cursor: wait;
+        }
+
+        .refresh-btn {
+            background: none;
+            border: 1px solid var(--border);
+            color: var(--text-secondary);
+            font-size: var(--font-size-xs);
+            padding: 2px 8px;
+            border-radius: var(--radius-sm);
+            cursor: pointer;
+            transition: all var(--transition);
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+        }
+
+        .refresh-btn:hover {
+            color: var(--text-primary);
+            border-color: var(--text-secondary);
+        }
+
+        .refresh-btn.loading {
+            opacity: 0.5;
+            cursor: wait;
+        }
+
         .whisper-label-row {
             display: flex;
             align-items: center;
@@ -499,6 +591,21 @@ export class MainView extends LitElement {
         _ollamaModel: { state: true },
         _whisperModel: { state: true },
         _showLocalHelp: { state: true },
+        // OpenRouter state
+        _openrouterKey: { state: true },
+        _openrouterModel: { state: true },
+        _openrouterVisionModel: { state: true },
+        _openrouterWhisperModel: { state: true },
+        _openrouterModelsList: { state: true },
+        _openrouterModelsLoading: { state: true },
+        // Diagnostics
+        _diagRunning: { state: true },
+        _diagResults: { state: true },
+        // WhisperX Docker
+        _whisperXEnabled: { state: true },
+        _whisperXUrl: { state: true },
+        _whisperXModel: { state: true },
+        _whisperXLang: { state: true },
     };
 
     constructor() {
@@ -521,6 +628,18 @@ export class MainView extends LitElement {
         this._ollamaHost = 'http://127.0.0.1:11434';
         this._ollamaModel = 'llama3.1';
         this._whisperModel = 'Xenova/whisper-small';
+        this._openrouterKey = '';
+        this._openrouterModel = 'openai/gpt-4o-mini';
+        this._openrouterVisionModel = 'openai/gpt-4o-mini';
+        this._openrouterWhisperModel = 'Xenova/whisper-tiny';
+        this._openrouterModelsList = null;
+        this._openrouterModelsLoading = false;
+        this._diagRunning = false;
+        this._diagResults = {};
+        this._whisperXEnabled = true;
+        this._whisperXUrl = 'http://localhost:8000';
+        this._whisperXModel = 'large-v3';
+        this._whisperXLang = 'ru';
 
         this._animId = null;
         this._time = 0;
@@ -550,6 +669,24 @@ export class MainView extends LitElement {
             this._ollamaHost = prefs.ollamaHost || 'http://127.0.0.1:11434';
             this._ollamaModel = prefs.ollamaModel || 'llama3.1';
             this._whisperModel = prefs.whisperModel || 'Xenova/whisper-small';
+
+            // Load OpenRouter settings
+            this._openrouterKey = await cheatingDaddy.storage.getOpenRouterApiKey().catch(() => '') || '';
+            this._openrouterModel = prefs.openrouterModel || 'openai/gpt-4o-mini';
+            this._openrouterVisionModel = prefs.openrouterVisionModel || 'openai/gpt-4o-mini';
+            this._openrouterWhisperModel = prefs.openrouterWhisperModel || 'Xenova/whisper-tiny';
+
+            // Load WhisperX Docker settings
+            this._whisperXEnabled = prefs.whisperXEnabled !== undefined ? prefs.whisperXEnabled : true;
+            this._whisperXUrl = prefs.whisperXUrl || 'http://localhost:8000';
+            this._whisperXModel = prefs.whisperXModel || 'large-v3';
+            this._whisperXLang = prefs.whisperXLang || 'ru';
+
+            // Load cached OpenRouter models list
+            const cachedModels = prefs.openrouterCachedModels;
+            if (cachedModels && cachedModels.length > 0) {
+                this._openrouterModelsList = cachedModels;
+            }
 
             this.requestUpdate();
         } catch (e) {
@@ -746,6 +883,293 @@ export class MainView extends LitElement {
         this.requestUpdate();
     }
 
+    async _saveOpenRouterKey(val) {
+        this._openrouterKey = val;
+        this._keyError = false;
+        await cheatingDaddy.storage.setOpenRouterApiKey(val);
+        this.requestUpdate();
+    }
+
+    async _saveOpenRouterModel(val) {
+        this._openrouterModel = val;
+        await cheatingDaddy.storage.updatePreference('openrouterModel', val);
+        this.requestUpdate();
+    }
+
+    async _saveOpenRouterVisionModel(val) {
+        this._openrouterVisionModel = val;
+        await cheatingDaddy.storage.updatePreference('openrouterVisionModel', val);
+        this.requestUpdate();
+    }
+
+    async _saveOpenRouterWhisperModel(val) {
+        this._openrouterWhisperModel = val;
+        await cheatingDaddy.storage.updatePreference('openrouterWhisperModel', val);
+        this.requestUpdate();
+    }
+
+    async _saveWhisperXEnabled(val) {
+        this._whisperXEnabled = val;
+        await cheatingDaddy.storage.updatePreference('whisperXEnabled', val);
+        this.requestUpdate();
+    }
+
+    async _saveWhisperXUrl(val) {
+        this._whisperXUrl = val;
+        await cheatingDaddy.storage.updatePreference('whisperXUrl', val);
+        this.requestUpdate();
+    }
+
+    async _saveWhisperXModel(val) {
+        this._whisperXModel = val;
+        await cheatingDaddy.storage.updatePreference('whisperXModel', val);
+        this.requestUpdate();
+    }
+
+    async _saveWhisperXLang(val) {
+        this._whisperXLang = val;
+        await cheatingDaddy.storage.updatePreference('whisperXLang', val);
+        this.requestUpdate();
+    }
+
+    async _fetchOpenRouterModels() {
+        if (this._openrouterModelsLoading) return;
+        this._openrouterModelsLoading = true;
+        this.requestUpdate();
+
+        try {
+            const models = await cheatingDaddy.fetchOpenRouterModels();
+            if (models && models.length > 0) {
+                this._openrouterModelsList = models;
+                await cheatingDaddy.storage.updatePreference('openrouterCachedModels', models);
+            }
+        } catch (e) {
+            console.error('Failed to fetch OpenRouter models:', e);
+        } finally {
+            this._openrouterModelsLoading = false;
+            this.requestUpdate();
+        }
+    }
+
+    // ── Diagnostics ──
+
+    async _runDiagnostics() {
+        if (this._diagRunning) return;
+        this._diagRunning = true;
+        this._diagResults = {};
+        this.requestUpdate();
+
+        // 1. Test WhisperX Docker
+        if (this._whisperXEnabled && this._whisperXUrl) {
+            await this._testWhisperXDocker();
+        }
+
+        // 2. Test Chat Model speed
+        if (this._openrouterKey && this._openrouterModel) {
+            await this._testChatModel();
+        }
+
+        // 3. Test Vision Model
+        if (this._openrouterKey && this._openrouterVisionModel) {
+            await this._testVisionModel();
+        }
+
+        this._diagRunning = false;
+        this.requestUpdate();
+    }
+
+    _setDiag(key, value) {
+        this._diagResults = { ...this._diagResults, [key]: value };
+        this.requestUpdate();
+    }
+
+    async _testWhisperXDocker() {
+        this._setDiag('whisperx', { status: 'loading', text: 'Connecting...' });
+        try {
+            const t0 = performance.now();
+            const resp = await fetch(`${this._whisperXUrl}/health`);
+            const elapsed = Math.round(performance.now() - t0);
+            if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+            const data = await resp.json();
+            this._setDiag('whisperx', { status: 'ok', text: `OK — ${elapsed}ms ping` });
+
+            // Test transcription speed with a tiny audio
+            this._setDiag('whisperx_speed', { status: 'loading', text: 'Testing transcription...' });
+            const wavBuffer = this._generateTestWav(1.0);
+            const blob = new Blob([wavBuffer], { type: 'audio/wav' });
+            const formData = new FormData();
+            formData.append('file', blob, 'test.wav');
+
+            const t1 = performance.now();
+            const txResp = await fetch(
+                `${this._whisperXUrl}/service/transcribe?language=${this._whisperXLang}&model=${this._whisperXModel}`,
+                { method: 'POST', body: formData }
+            );
+            if (!txResp.ok) throw new Error(`Transcribe HTTP ${txResp.status}`);
+            const { identifier } = await txResp.json();
+
+            // Poll for result
+            for (let i = 0; i < 60; i++) {
+                await new Promise(r => setTimeout(r, 500));
+                const taskResp = await fetch(`${this._whisperXUrl}/task/${identifier}`);
+                const task = await taskResp.json();
+                if (task.status === 'completed') {
+                    const elapsed2 = Math.round(performance.now() - t1);
+                    this._setDiag('whisperx_speed', { status: 'ok', text: `${elapsed2}ms (1s audio)` });
+                    return;
+                }
+                if (task.status === 'failed' || task.error) throw new Error(task.error || 'Task failed');
+            }
+            throw new Error('Timeout');
+        } catch (e) {
+            const key = this._diagResults.whisperx_speed ? 'whisperx_speed' : 'whisperx';
+            this._setDiag(key, { status: 'err', text: e.message });
+        }
+    }
+
+    _generateTestWav(durationSec) {
+        const sampleRate = 16000;
+        const numSamples = Math.floor(sampleRate * durationSec);
+        const buffer = new ArrayBuffer(44 + numSamples * 2);
+        const view = new DataView(buffer);
+        const writeStr = (off, str) => { for (let i = 0; i < str.length; i++) view.setUint8(off + i, str.charCodeAt(i)); };
+        writeStr(0, 'RIFF');
+        view.setUint32(4, 36 + numSamples * 2, true);
+        writeStr(8, 'WAVE');
+        writeStr(12, 'fmt ');
+        view.setUint32(16, 16, true);
+        view.setUint16(20, 1, true);
+        view.setUint16(22, 1, true);
+        view.setUint32(24, sampleRate, true);
+        view.setUint32(28, sampleRate * 2, true);
+        view.setUint16(32, 2, true);
+        view.setUint16(34, 16, true);
+        writeStr(36, 'data');
+        view.setUint32(40, numSamples * 2, true);
+        // Generate a 440Hz sine wave for better test
+        for (let i = 0; i < numSamples; i++) {
+            const sample = Math.round(Math.sin(2 * Math.PI * 440 * i / sampleRate) * 16000);
+            view.setInt16(44 + i * 2, sample, true);
+        }
+        return buffer;
+    }
+
+    async _testChatModel() {
+        this._setDiag('chat', { status: 'loading', text: `Testing ${this._openrouterModel}...` });
+        try {
+            const t0 = performance.now();
+            const resp = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+                method: 'POST',
+                headers: {
+                    'Authorization': `Bearer ${this._openrouterKey}`,
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    model: this._openrouterModel,
+                    messages: [{ role: 'user', content: 'Count from 1 to 20, one number per line.' }],
+                    stream: true,
+                    max_tokens: 200,
+                }),
+            });
+
+            if (!resp.ok) {
+                const errText = await resp.text();
+                throw new Error(`HTTP ${resp.status}: ${errText.substring(0, 100)}`);
+            }
+
+            const reader = resp.body.getReader();
+            const decoder = new TextDecoder();
+            let tokens = 0;
+            let firstTokenTime = null;
+
+            while (true) {
+                const { done, value } = await reader.read();
+                if (done) break;
+                const chunk = decoder.decode(value, { stream: true });
+                for (const line of chunk.split('\n')) {
+                    if (!line.startsWith('data: ') || line.includes('[DONE]')) continue;
+                    try {
+                        const json = JSON.parse(line.slice(6));
+                        const t = json.choices?.[0]?.delta?.content;
+                        if (t) {
+                            tokens++;
+                            if (!firstTokenTime) firstTokenTime = performance.now();
+                        }
+                    } catch {}
+                }
+            }
+
+            const totalMs = Math.round(performance.now() - t0);
+            const ttft = firstTokenTime ? Math.round(firstTokenTime - t0) : 0;
+            const genMs = firstTokenTime ? Math.round(performance.now() - firstTokenTime) : totalMs;
+            const tps = genMs > 0 ? (tokens / (genMs / 1000)).toFixed(1) : '?';
+
+            this._setDiag('chat', {
+                status: 'ok',
+                text: `${tps} tok/s — ${tokens} tokens in ${totalMs}ms (TTFT: ${ttft}ms)`,
+            });
+        } catch (e) {
+            this._setDiag('chat', { status: 'err', text: e.message });
+        }
+    }
+
+    async _testVisionModel() {
+        this._setDiag('vision', { status: 'loading', text: `Testing ${this._openrouterVisionModel}...` });
+        try {
+            // Generate a simple test image (red square on white, 64x64 PNG via canvas)
+            const canvas = document.createElement('canvas');
+            canvas.width = 100; canvas.height = 100;
+            const ctx = canvas.getContext('2d');
+            ctx.fillStyle = '#ffffff';
+            ctx.fillRect(0, 0, 100, 100);
+            ctx.fillStyle = '#ff0000';
+            ctx.fillRect(20, 20, 60, 60);
+            ctx.fillStyle = '#000000';
+            ctx.font = '16px sans-serif';
+            ctx.fillText('TEST', 28, 58);
+            const dataUrl = canvas.toDataURL('image/png');
+            const base64 = dataUrl.split(',')[1];
+
+            const t0 = performance.now();
+            const resp = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+                method: 'POST',
+                headers: {
+                    'Authorization': `Bearer ${this._openrouterKey}`,
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    model: this._openrouterVisionModel,
+                    messages: [{
+                        role: 'user',
+                        content: [
+                            { type: 'image_url', image_url: { url: `data:image/png;base64,${base64}` } },
+                            { type: 'text', text: 'What text and colors do you see? Answer in 10 words max.' },
+                        ],
+                    }],
+                    max_tokens: 50,
+                }),
+            });
+
+            if (!resp.ok) {
+                const errText = await resp.text();
+                throw new Error(`HTTP ${resp.status}: ${errText.substring(0, 100)}`);
+            }
+
+            const data = await resp.json();
+            const totalMs = Math.round(performance.now() - t0);
+            const answer = data.choices?.[0]?.message?.content?.trim() || '(empty)';
+            const hasRed = /red|красн/i.test(answer);
+            const hasTest = /test|тест/i.test(answer);
+
+            this._setDiag('vision', {
+                status: hasRed || hasTest ? 'ok' : 'warn',
+                text: `${totalMs}ms — "${answer.substring(0, 60)}"`,
+            });
+        } catch (e) {
+            this._setDiag('vision', { status: 'err', text: e.message });
+        }
+    }
+
     _handleProfileChange(e) {
         this.onProfileChange(e.target.value);
     }
@@ -770,6 +1194,12 @@ export class MainView extends LitElement {
         } else if (this._mode === 'local') {
             // Local mode doesn't need API keys, just Ollama host
             if (!this._ollamaHost.trim()) {
+                return;
+            }
+        } else if (this._mode === 'openrouter') {
+            if (!this._openrouterKey.trim()) {
+                this._keyError = true;
+                this.requestUpdate();
                 return;
             }
         }
@@ -845,13 +1275,17 @@ export class MainView extends LitElement {
             ${this._renderDivider()}
 
             <div class="mode-cards">
+                <div class="mode-card" @click=${() => this._saveMode('openrouter')}>
+                    <span class="mode-card-title">OpenRouter</span>
+                    <span class="mode-card-desc">Any model, one API key</span>
+                </div>
                 <div class="mode-card" @click=${() => this._saveMode('byok')}>
-                    <span class="mode-card-title">Use your API keys</span>
-                    <span class="mode-card-desc">Bring your own Gemini / Groq keys</span>
+                    <span class="mode-card-title">BYOK</span>
+                    <span class="mode-card-desc">Gemini / Groq keys</span>
                 </div>
                 <div class="mode-card" @click=${() => this._saveMode('local')}>
-                    <span class="mode-card-title">Use local AI</span>
-                    <span class="mode-card-desc">Run Ollama + Whisper on your machine</span>
+                    <span class="mode-card-title">Local AI</span>
+                    <span class="mode-card-desc">Ollama + Whisper</span>
                 </div>
             </div>
         `;
@@ -901,7 +1335,8 @@ export class MainView extends LitElement {
             </div>
 
             <div class="mode-links">
-                <button class="mode-link" @click=${() => this._saveMode('local')}>Use local AI</button>
+                <button class="mode-link" @click=${() => this._saveMode('openrouter')}>OpenRouter</button>
+                <button class="mode-link" @click=${() => this._saveMode('local')}>Local AI</button>
             </div>
         `;
     }
@@ -962,7 +1397,211 @@ export class MainView extends LitElement {
             </div>
 
             <div class="mode-links">
-                <button class="mode-link" @click=${() => this._saveMode('byok')}>Use own API keys</button>
+                <button class="mode-link" @click=${() => this._saveMode('openrouter')}>OpenRouter</button>
+                <button class="mode-link" @click=${() => this._saveMode('byok')}>BYOK</button>
+            </div>
+        `;
+    }
+
+    // ── OpenRouter mode ──
+
+    _renderOpenRouterMode() {
+        const models = this._openrouterModelsList;
+        const hasModels = models && models.length > 0;
+
+        // Group models by provider for display
+        const chatModels = hasModels ? models.filter(m => m.type === 'chat' || m.type === 'both') : [];
+        const visionModels = hasModels ? models.filter(m => m.type === 'vision' || m.type === 'both') : [];
+
+        // Group by provider prefix
+        const groupByProvider = (list) => {
+            const groups = {};
+            for (const m of list) {
+                const provider = m.id.split('/')[0];
+                if (!groups[provider]) groups[provider] = [];
+                groups[provider].push(m);
+            }
+            return groups;
+        };
+
+        const renderModelOptions = (list, selectedValue) => {
+            const groups = groupByProvider(list);
+            return Object.entries(groups).map(([provider, items]) => html`
+                <optgroup label=${provider}>
+                    ${items.map(m => html`
+                        <option value=${m.id} ?selected=${selectedValue === m.id}>${m.name}${m.price ? ` — ${m.price}` : ''}</option>
+                    `)}
+                </optgroup>
+            `);
+        };
+
+        const refreshBtn = html`
+            <button class="refresh-btn ${this._openrouterModelsLoading ? 'loading' : ''}"
+                @click=${() => this._fetchOpenRouterModels()}
+                ?disabled=${this._openrouterModelsLoading}>
+                ${this._openrouterModelsLoading ? '...' : '↻'} ${this._openrouterModelsLoading ? 'Loading' : 'Refresh'}
+            </button>
+        `;
+
+        return html`
+            <div class="form-group">
+                <label class="form-label">OpenRouter API Key</label>
+                <input
+                    type="password"
+                    placeholder="sk-or-..."
+                    .value=${this._openrouterKey}
+                    @input=${e => this._saveOpenRouterKey(e.target.value)}
+                    class=${this._keyError ? 'error' : ''}
+                />
+                <div class="form-hint">
+                    <span class="link" @click=${() => this.onExternalLink('https://openrouter.ai/keys')}>Get OpenRouter key</span>
+                </div>
+            </div>
+
+            <div class="form-group">
+                <div class="model-label-row">
+                    <label class="form-label">Chat Model</label>
+                    ${refreshBtn}
+                </div>
+                <select
+                    .value=${this._openrouterModel}
+                    @change=${e => this._saveOpenRouterModel(e.target.value)}
+                >
+                    ${hasModels ? renderModelOptions(chatModels, this._openrouterModel) : html`
+                        <option value=${this._openrouterModel} selected>${this._openrouterModel}</option>
+                    `}
+                </select>
+                <div class="form-hint">${hasModels ? `${chatModels.length} models available` : 'Click Refresh to load models from OpenRouter'}</div>
+            </div>
+
+            <div class="form-group">
+                <div class="model-label-row">
+                    <label class="form-label">Vision Model</label>
+                </div>
+                <select
+                    .value=${this._openrouterVisionModel}
+                    @change=${e => this._saveOpenRouterVisionModel(e.target.value)}
+                >
+                    ${hasModels ? renderModelOptions(visionModels, this._openrouterVisionModel) : html`
+                        <option value=${this._openrouterVisionModel} selected>${this._openrouterVisionModel}</option>
+                    `}
+                </select>
+                <div class="form-hint">${hasModels ? `${visionModels.length} vision models` : 'Models with image input support'}</div>
+            </div>
+
+            <div class="form-group">
+                <div class="model-label-row">
+                    <label class="form-label">Speech-to-Text</label>
+                    <label style="display:flex;align-items:center;gap:4px;font-size:var(--font-size-xs);cursor:pointer">
+                        <input type="checkbox"
+                            .checked=${this._whisperXEnabled}
+                            @change=${e => this._saveWhisperXEnabled(e.target.checked)}
+                        /> WhisperX Docker
+                    </label>
+                </div>
+                ${this._whisperXEnabled ? html`
+                    <input
+                        type="text"
+                        placeholder="http://localhost:8000"
+                        .value=${this._whisperXUrl}
+                        @input=${e => this._saveWhisperXUrl(e.target.value)}
+                        style="margin-bottom:6px"
+                    />
+                    <div style="display:flex;gap:6px">
+                        <select style="flex:1"
+                            .value=${this._whisperXModel}
+                            @change=${e => this._saveWhisperXModel(e.target.value)}
+                        >
+                            <option value="large-v3" ?selected=${this._whisperXModel === 'large-v3'}>large-v3</option>
+                            <option value="large-v3-turbo" ?selected=${this._whisperXModel === 'large-v3-turbo'}>large-v3-turbo</option>
+                            <option value="medium" ?selected=${this._whisperXModel === 'medium'}>medium</option>
+                            <option value="small" ?selected=${this._whisperXModel === 'small'}>small</option>
+                        </select>
+                        <select style="flex:1"
+                            .value=${this._whisperXLang}
+                            @change=${e => this._saveWhisperXLang(e.target.value)}
+                        >
+                            <option value="ru" ?selected=${this._whisperXLang === 'ru'}>Russian</option>
+                            <option value="en" ?selected=${this._whisperXLang === 'en'}>English</option>
+                            <option value="uk" ?selected=${this._whisperXLang === 'uk'}>Ukrainian</option>
+                            <option value="de" ?selected=${this._whisperXLang === 'de'}>German</option>
+                            <option value="fr" ?selected=${this._whisperXLang === 'fr'}>French</option>
+                            <option value="es" ?selected=${this._whisperXLang === 'es'}>Spanish</option>
+                            <option value="zh" ?selected=${this._whisperXLang === 'zh'}>Chinese</option>
+                            <option value="ja" ?selected=${this._whisperXLang === 'ja'}>Japanese</option>
+                        </select>
+                    </div>
+                    <div class="form-hint">WhisperX with CUDA — large-v3 for best Russian accuracy</div>
+                ` : html`
+                    <div class="whisper-label-row">
+                        ${this.whisperDownloading ? html`<div class="whisper-spinner"></div>` : ''}
+                    </div>
+                    <select
+                        .value=${this._openrouterWhisperModel}
+                        @change=${e => this._saveOpenRouterWhisperModel(e.target.value)}
+                    >
+                        <option value="Xenova/whisper-tiny" ?selected=${this._openrouterWhisperModel === 'Xenova/whisper-tiny'}>Tiny (fastest)</option>
+                        <option value="Xenova/whisper-base" ?selected=${this._openrouterWhisperModel === 'Xenova/whisper-base'}>Base</option>
+                        <option value="Xenova/whisper-small" ?selected=${this._openrouterWhisperModel === 'Xenova/whisper-small'}>Small (more accurate)</option>
+                    </select>
+                    <div class="form-hint">${this.whisperDownloading ? 'Downloading model...' : 'Local Whisper on CPU — enable WhisperX Docker for better accuracy'}</div>
+                `}
+            </div>
+
+            <div class="diag-section">
+                <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
+                    <span class="diag-title" style="margin-bottom:0">Diagnostics</span>
+                    <button class="diag-btn" @click=${() => this._runDiagnostics()} ?disabled=${this._diagRunning}>
+                        ${this._diagRunning ? '...' : '▶'} Run tests
+                    </button>
+                </div>
+                ${this._diagResults.whisperx ? html`
+                    <div class="diag-row">
+                        <span class="diag-label">WhisperX Docker</span>
+                        <span class="diag-value diag-${this._diagResults.whisperx.status}">${this._diagResults.whisperx.text}</span>
+                    </div>
+                ` : ''}
+                ${this._diagResults.whisperx_speed ? html`
+                    <div class="diag-row">
+                        <span class="diag-label">WhisperX Speed</span>
+                        <span class="diag-value diag-${this._diagResults.whisperx_speed.status}">${this._diagResults.whisperx_speed.text}</span>
+                    </div>
+                ` : ''}
+                ${this._diagResults.chat ? html`
+                    <div class="diag-row">
+                        <span class="diag-label">Chat: ${this._openrouterModel.split('/').pop()}</span>
+                        <span class="diag-value diag-${this._diagResults.chat.status}">${this._diagResults.chat.text}</span>
+                    </div>
+                ` : ''}
+                ${this._diagResults.vision ? html`
+                    <div class="diag-row">
+                        <span class="diag-label">Vision: ${this._openrouterVisionModel.split('/').pop()}</span>
+                        <span class="diag-value diag-${this._diagResults.vision.status}">${this._diagResults.vision.text}</span>
+                    </div>
+                ` : ''}
+                ${Object.keys(this._diagResults).length === 0 && !this._diagRunning ? html`
+                    <div style="font-size:var(--font-size-xs);color:var(--text-muted);text-align:center;padding:4px">
+                        Test Docker, model speed & vision
+                    </div>
+                ` : ''}
+            </div>
+
+            ${this._renderStartButton()}
+            ${this._renderDivider()}
+
+            <div class="mode-cards">
+                <div class="mode-card" @click=${() => this._saveMode('cloud')}>
+                    <span class="mode-card-title">Cloud</span>
+                    <span class="mode-card-desc">Zero setup, invite code</span>
+                </div>
+                <div class="mode-card" @click=${() => this._saveMode('byok')}>
+                    <span class="mode-card-title">BYOK</span>
+                    <span class="mode-card-desc">Gemini + Groq keys</span>
+                </div>
+                <div class="mode-card" @click=${() => this._saveMode('local')}>
+                    <span class="mode-card-title">Local AI</span>
+                    <span class="mode-card-desc">Ollama + Whisper</span>
+                </div>
             </div>
         `;
     }
@@ -975,23 +1614,31 @@ export class MainView extends LitElement {
 
         return html`
             <div class="form-wrapper">
-                ${this._mode === 'local' ? html`
+                ${this._mode === 'local' || this._mode === 'openrouter' ? html`
                     <div class="title-row">
-                        <div class="page-title">Cheating Daddy <span class="mode-suffix">Local AI</span></div>
-                        <button class="help-btn" @click=${() => { this._showLocalHelp = !this._showLocalHelp; }}>${this._showLocalHelp ? closeIcon : helpIcon}</button>
+                        <div class="page-title">Cheating Daddy <span class="mode-suffix">${this._mode === 'local' ? 'Local AI' : 'OpenRouter'}</span></div>
+                        ${this._mode === 'local' ? html`
+                            <button class="help-btn" @click=${() => { this._showLocalHelp = !this._showLocalHelp; }}>${this._showLocalHelp ? closeIcon : helpIcon}</button>
+                        ` : ''}
                     </div>
                 ` : html`
                     <div class="page-title">
-                        ${this._mode === 'cloud' ? 'Cheating Daddy Cloud' : html`Cheating Daddy <span class="mode-suffix">BYOK</span>`}
+                        ${this._mode === 'cloud' ? 'Cheating Daddy Cloud'
+                            : this._mode === 'openrouter' ? html`Cheating Daddy <span class="mode-suffix">OpenRouter</span>`
+                            : html`Cheating Daddy <span class="mode-suffix">BYOK</span>`}
                     </div>
                 `}
                 <div class="page-subtitle">
-                    ${this._mode === 'cloud' ? 'Enter your invite code to get started' : this._mode === 'byok' ? 'Bring your own API keys' : 'Run models locally on your machine'}
+                    ${this._mode === 'cloud' ? 'Enter your invite code to get started'
+                        : this._mode === 'openrouter' ? 'Use any model via OpenRouter'
+                        : this._mode === 'byok' ? 'Bring your own API keys'
+                        : 'Run models locally on your machine'}
                 </div>
 
                 ${this._mode === 'cloud' ? this._renderCloudMode() : ''}
                 ${this._mode === 'byok' ? this._renderByokMode() : ''}
                 ${this._mode === 'local' ? (this._showLocalHelp ? this._renderLocalHelp() : this._renderLocalMode()) : ''}
+                ${this._mode === 'openrouter' ? this._renderOpenRouterMode() : ''}
             </div>
         `;
     }

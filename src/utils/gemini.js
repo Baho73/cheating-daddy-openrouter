@@ -6,11 +6,17 @@ const { getSystemPrompt } = require('./prompts');
 const { getAvailableModel, incrementLimitCount, getApiKey, getGroqApiKey, incrementCharUsage, getModelForToday } = require('../storage');
 const { connectCloud, sendCloudAudio, sendCloudText, sendCloudImage, closeCloud, isCloudActive, setOnTurnComplete } = require('./cloud');
 
-// Lazy-loaded to avoid circular dependency (localai.js imports from gemini.js)
+// Lazy-loaded to avoid circular dependency
 let _localai = null;
 function getLocalAi() {
     if (!_localai) _localai = require('./localai');
     return _localai;
+}
+
+let _openrouter = null;
+function getOpenRouter() {
+    if (!_openrouter) _openrouter = require('./openrouter');
+    return _openrouter;
 }
 
 // Provider mode: 'byok', 'cloud', or 'local'
@@ -706,6 +712,8 @@ async function startMacOSAudioCapture(geminiSessionRef) {
                 sendCloudAudio(monoChunk);
             } else if (currentProviderMode === 'local') {
                 getLocalAi().processLocalAudio(monoChunk);
+            } else if (currentProviderMode === 'openrouter') {
+                getOpenRouter().processOpenRouterAudio(monoChunk);
             } else {
                 const base64Data = monoChunk.toString('base64');
                 sendAudioToGemini(base64Data, geminiSessionRef);
@@ -874,6 +882,15 @@ function setupGeminiIpcHandlers(geminiSessionRef) {
         return success;
     });
 
+    ipcMain.handle('initialize-openrouter', async (event, apiKey, model, visionModel, whisperModel, profile, customPrompt, whisperXConfig) => {
+        currentProviderMode = 'openrouter';
+        const success = await getOpenRouter().initializeOpenRouterSession(apiKey, model, visionModel, whisperModel, profile, customPrompt, whisperXConfig);
+        if (!success) {
+            currentProviderMode = 'byok';
+        }
+        return success;
+    });
+
     ipcMain.handle('send-audio-content', async (event, { data, mimeType }) => {
         if (currentProviderMode === 'cloud') {
             try {
@@ -892,6 +909,16 @@ function setupGeminiIpcHandlers(geminiSessionRef) {
                 return { success: true };
             } catch (error) {
                 console.error('Error sending local audio:', error);
+                return { success: false, error: error.message };
+            }
+        }
+        if (currentProviderMode === 'openrouter') {
+            try {
+                const pcmBuffer = Buffer.from(data, 'base64');
+                getOpenRouter().processOpenRouterAudio(pcmBuffer);
+                return { success: true };
+            } catch (error) {
+                console.error('Error sending openrouter audio:', error);
                 return { success: false, error: error.message };
             }
         }
@@ -927,6 +954,16 @@ function setupGeminiIpcHandlers(geminiSessionRef) {
                 return { success: true };
             } catch (error) {
                 console.error('Error sending local mic audio:', error);
+                return { success: false, error: error.message };
+            }
+        }
+        if (currentProviderMode === 'openrouter') {
+            try {
+                const pcmBuffer = Buffer.from(data, 'base64');
+                getOpenRouter().processOpenRouterAudio(pcmBuffer);
+                return { success: true };
+            } catch (error) {
+                console.error('Error sending openrouter mic audio:', error);
                 return { success: false, error: error.message };
             }
         }
@@ -972,6 +1009,11 @@ function setupGeminiIpcHandlers(geminiSessionRef) {
                 return result;
             }
 
+            if (currentProviderMode === 'openrouter') {
+                const result = await getOpenRouter().sendImageToOpenRouter(data, prompt);
+                return result;
+            }
+
             // Use HTTP API instead of realtime session
             const result = await sendImageToGeminiHttp(data, prompt);
             return result;
@@ -1003,6 +1045,16 @@ function setupGeminiIpcHandlers(geminiSessionRef) {
                 return await getLocalAi().sendLocalText(text.trim());
             } catch (error) {
                 console.error('Error sending local text:', error);
+                return { success: false, error: error.message };
+            }
+        }
+
+        if (currentProviderMode === 'openrouter') {
+            try {
+                console.log('Sending text to OpenRouter:', text);
+                return await getOpenRouter().sendOpenRouterText(text.trim());
+            } catch (error) {
+                console.error('Error sending openrouter text:', error);
                 return { success: false, error: error.message };
             }
         }
@@ -1065,6 +1117,12 @@ function setupGeminiIpcHandlers(geminiSessionRef) {
 
             if (currentProviderMode === 'local') {
                 getLocalAi().closeLocalSession();
+                currentProviderMode = 'byok';
+                return { success: true };
+            }
+
+            if (currentProviderMode === 'openrouter') {
+                getOpenRouter().closeOpenRouterSession();
                 currentProviderMode = 'byok';
                 return { success: true };
             }

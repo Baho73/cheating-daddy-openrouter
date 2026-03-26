@@ -26,6 +26,7 @@ export class AssistantView extends LitElement {
             user-select: text;
             cursor: text;
             color: var(--text-primary);
+            transform: var(--response-mirror, none);
         }
 
         .response-container * {
@@ -121,7 +122,7 @@ export class AssistantView extends LitElement {
         .response-container hr {
             border: none;
             border-top: 1px solid var(--border);
-            margin: 1.5em 0;
+            margin: 0.5em 0;
         }
 
         .response-container table {

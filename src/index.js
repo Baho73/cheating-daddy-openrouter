@@ -2,6 +2,12 @@ if (require('electron-squirrel-startup')) {
     process.exit(0);
 }
 
+// Fix Windows console encoding for Cyrillic
+if (process.platform === 'win32') {
+    const { execSync } = require('child_process');
+    try { execSync('chcp 65001', { stdio: 'ignore' }); } catch {}
+}
+
 const { app, BrowserWindow, shell, ipcMain } = require('electron');
 const { createWindow, updateGlobalShortcuts } = require('./utils/window');
 const { setupGeminiIpcHandlers, stopMacOSAudioCapture, sendToRenderer } = require('./utils/gemini');
@@ -133,6 +139,25 @@ function setupStorageIpcHandlers() {
             return { success: true };
         } catch (error) {
             console.error('Error setting Groq API key:', error);
+            return { success: false, error: error.message };
+        }
+    });
+
+    ipcMain.handle('storage:get-openrouter-api-key', async () => {
+        try {
+            return { success: true, data: storage.getOpenRouterApiKey() };
+        } catch (error) {
+            console.error('Error getting OpenRouter API key:', error);
+            return { success: false, error: error.message };
+        }
+    });
+
+    ipcMain.handle('storage:set-openrouter-api-key', async (event, openrouterApiKey) => {
+        try {
+            storage.setOpenRouterApiKey(openrouterApiKey);
+            return { success: true };
+        } catch (error) {
+            console.error('Error setting OpenRouter API key:', error);
             return { success: false, error: error.message };
         }
     });

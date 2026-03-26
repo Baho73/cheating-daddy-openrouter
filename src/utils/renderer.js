@@ -56,6 +56,13 @@ const storage = {
     async setGroqApiKey(groqApiKey) {
         return ipcRenderer.invoke('storage:set-groq-api-key', groqApiKey);
     },
+    async getOpenRouterApiKey() {
+        const result = await ipcRenderer.invoke('storage:get-openrouter-api-key');
+        return result.success ? result.data : '';
+    },
+    async setOpenRouterApiKey(apiKey) {
+        return ipcRenderer.invoke('storage:set-openrouter-api-key', apiKey);
+    },
 
     // Preferences
     async getPreferences() {
@@ -170,6 +177,39 @@ async function initializeLocal(profile = 'interview') {
     }
 }
 
+async function initializeOpenRouter(profile = 'interview') {
+    const apiKey = await storage.getOpenRouterApiKey();
+    if (!apiKey || !apiKey.trim()) {
+        cheatingDaddy.setStatus('error');
+        return false;
+    }
+
+    const prefs = await storage.getPreferences();
+    const model = prefs.openrouterModel || 'openai/gpt-4o-mini';
+    const visionModel = prefs.openrouterVisionModel || 'openai/gpt-4o-mini';
+    const whisperModel = prefs.openrouterWhisperModel || 'Xenova/whisper-tiny';
+    const customPrompt = prefs.customPrompt || '';
+
+    // WhisperX Docker config (if enabled)
+    let whisperXConfig = null;
+    if (prefs.whisperXEnabled !== false) {
+        whisperXConfig = {
+            url: prefs.whisperXUrl || 'http://localhost:8000',
+            model: prefs.whisperXModel || 'large-v3',
+            language: prefs.whisperXLang || 'ru',
+        };
+    }
+
+    const success = await ipcRenderer.invoke('initialize-openrouter', apiKey, model, visionModel, whisperModel, profile, customPrompt, whisperXConfig);
+    if (success) {
+        cheatingDaddy.setStatus('OpenRouter Live');
+        return true;
+    } else {
+        cheatingDaddy.setStatus('error');
+        return false;
+    }
+}
+
 async function initializeCloud(profile = 'interview') {
     const creds = await storage.getCredentials();
     const token = creds.cloudToken;
@@ -186,6 +226,45 @@ async function initializeCloud(profile = 'interview') {
     } else {
         cheatingDaddy.setStatus('error');
         return false;
+    }
+}
+
+async function fetchOpenRouterModels() {
+    try {
+        const resp = await fetch('https://openrouter.ai/api/v1/models');
+        if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+        const data = await resp.json();
+
+        const models = [];
+        for (const m of data.data) {
+            if (!m.id || !m.name) continue;
+
+            // Determine pricing string
+            const promptPrice = parseFloat(m.pricing?.prompt || 0);
+            const price = promptPrice > 0
+                ? `$${(promptPrice * 1000000).toFixed(2)}/M`
+                : 'free';
+
+            // Determine if model supports vision (image input)
+            const modality = m.architecture?.modality || '';
+            const supportsVision = modality.includes('image') ||
+                m.id.includes('vision') ||
+                (m.architecture?.input_modalities && m.architecture.input_modalities.includes('image'));
+
+            // Skip models that are clearly not useful (embeddings, moderation, tts, etc.)
+            if (modality === 'text->image' || modality === 'text->audio' ||
+                m.id.includes('/embed') || m.id.includes('moderation')) continue;
+
+            const type = supportsVision ? 'both' : 'chat';
+            models.push({ id: m.id, name: m.name, price, type });
+        }
+
+        // Sort by provider, then by name
+        models.sort((a, b) => a.id.localeCompare(b.id));
+        return models;
+    } catch (e) {
+        console.error('Failed to fetch OpenRouter models:', e);
+        return [];
     }
 }
 
@@ -1029,6 +1108,8 @@ const cheatingDaddy = {
     initializeGemini,
     initializeCloud,
     initializeLocal,
+    initializeOpenRouter,
+    fetchOpenRouterModels,
     startCapture,
     stopCapture,
     sendTextMessage,

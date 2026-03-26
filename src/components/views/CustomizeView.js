@@ -184,6 +184,7 @@ export class CustomizeView extends LitElement {
         googleSearchEnabled: { type: Boolean },
         backgroundTransparency: { type: Number },
         fontSize: { type: Number },
+        mirrorMode: { type: Boolean },
         theme: { type: String },
         onProfileChange: { type: Function },
         onLanguageChange: { type: Function },
@@ -213,6 +214,7 @@ export class CustomizeView extends LitElement {
         this.clearStatusType = '';
         this.backgroundTransparency = 0.8;
         this.fontSize = 20;
+        this.mirrorMode = false;
         this.audioMode = 'speaker_only';
         this.customPrompt = '';
         this.theme = 'dark';
@@ -229,7 +231,9 @@ export class CustomizeView extends LitElement {
             this.googleSearchEnabled = prefs.googleSearchEnabled ?? true;
             this.backgroundTransparency = prefs.backgroundTransparency ?? 0.8;
             this.fontSize = prefs.fontSize ?? 20;
+            this.mirrorMode = prefs.mirrorMode ?? false;
             this.audioMode = prefs.audioMode ?? 'speaker_only';
+            this.updateMirrorMode();
             this.customPrompt = prefs.customPrompt ?? '';
             this.theme = prefs.theme ?? 'dark';
             if (keybinds) {
@@ -303,6 +307,7 @@ export class CustomizeView extends LitElement {
             nextResponse: isMac ? 'Cmd+]' : 'Ctrl+]',
             scrollUp: isMac ? 'Cmd+Shift+Up' : 'Ctrl+Shift+Up',
             scrollDown: isMac ? 'Cmd+Shift+Down' : 'Ctrl+Shift+Down',
+            toggleMirror: isMac ? 'Cmd+Shift+M' : 'Ctrl+Shift+M',
         };
     }
 
@@ -319,6 +324,7 @@ export class CustomizeView extends LitElement {
             { key: 'nextResponse', name: 'Next Response', description: 'Move to next AI response' },
             { key: 'scrollUp', name: 'Scroll Response Up', description: 'Scroll response content upward' },
             { key: 'scrollDown', name: 'Scroll Response Down', description: 'Scroll response content downward' },
+            { key: 'toggleMirror', name: 'Toggle Mirror', description: 'Flip text for teleprompter' },
         ];
     }
 
@@ -405,6 +411,17 @@ export class CustomizeView extends LitElement {
         document.documentElement.style.setProperty('--response-font-size', `${this.fontSize}px`);
     }
 
+    async handleMirrorModeChange(e) {
+        this.mirrorMode = e.target.checked;
+        await cheatingDaddy.storage.updatePreference('mirrorMode', this.mirrorMode);
+        this.updateMirrorMode();
+        this.requestUpdate();
+    }
+
+    updateMirrorMode() {
+        document.documentElement.style.setProperty('--response-mirror', this.mirrorMode ? 'scaleX(-1)' : 'none');
+    }
+
     handleKeybindChange(action, value) {
         this.keybinds = { ...this.keybinds, [action]: value };
         this.saveKeybinds();
@@ -487,6 +504,7 @@ export class CustomizeView extends LitElement {
                 selectedImageQuality: 'medium',
                 audioMode: 'speaker_only',
                 fontSize: 20,
+                mirrorMode: false,
                 backgroundTransparency: 0.8,
                 googleSearchEnabled: false,
                 theme: 'dark',
@@ -509,6 +527,7 @@ export class CustomizeView extends LitElement {
             this.selectedImageQuality = defaults.selectedImageQuality;
             this.audioMode = defaults.audioMode;
             this.fontSize = defaults.fontSize;
+            this.mirrorMode = defaults.mirrorMode;
             this.backgroundTransparency = defaults.backgroundTransparency;
             this.googleSearchEnabled = defaults.googleSearchEnabled;
             this.customPrompt = defaults.customPrompt;
@@ -652,6 +671,15 @@ export class CustomizeView extends LitElement {
                             .value=${this.fontSize}
                             @input=${this.handleFontSizeChange}
                         />
+                    </div>
+                    <div class="form-group" style="display:flex;align-items:center;gap:8px;margin-top:var(--space-sm)">
+                        <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:var(--font-size-sm)">
+                            <input type="checkbox"
+                                .checked=${this.mirrorMode}
+                                @change=${this.handleMirrorModeChange}
+                            />
+                            Mirror mode (teleprompter)
+                        </label>
                     </div>
                 </div>
             </section>

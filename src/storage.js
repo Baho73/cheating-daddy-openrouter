@@ -13,7 +13,8 @@ const DEFAULT_CONFIG = {
 
 const DEFAULT_CREDENTIALS = {
     apiKey: '',
-    groqApiKey: ''
+    groqApiKey: '',
+    openrouterApiKey: ''
 };
 
 const DEFAULT_PREFERENCES = {
@@ -30,6 +31,9 @@ const DEFAULT_PREFERENCES = {
     ollamaHost: 'http://127.0.0.1:11434',
     ollamaModel: 'llama3.1',
     whisperModel: 'Xenova/whisper-small',
+    openrouterModel: 'openai/gpt-4o-mini',
+    openrouterVisionModel: 'openai/gpt-4o-mini',
+    openrouterWhisperModel: 'Xenova/whisper-tiny',
 };
 
 const DEFAULT_KEYBINDS = null; // null means use system defaults
@@ -202,6 +206,14 @@ function getGroqApiKey() {
 
 function setGroqApiKey(groqApiKey) {
     return setCredentials({ groqApiKey });
+}
+
+function getOpenRouterApiKey() {
+    return getCredentials().openrouterApiKey || '';
+}
+
+function setOpenRouterApiKey(openrouterApiKey) {
+    return setCredentials({ openrouterApiKey });
 }
 
 // ============ PREFERENCES ============
@@ -500,6 +512,8 @@ module.exports = {
     setApiKey,
     getGroqApiKey,
     setGroqApiKey,
+    getOpenRouterApiKey,
+    setOpenRouterApiKey,
 
     // Preferences
     getPreferences,

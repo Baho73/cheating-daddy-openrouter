@@ -1,0 +1,47 @@
+<RequirementsAnalysis VERSION="0.1.0">
+  <UseCases>
+
+    <UC-001>
+      <Actor>User</Actor>
+      <Action>Запускает AI-сессию во время видеозвонка</Action>
+      <Goal>Получать контекстные подсказки от AI в реальном времени</Goal>
+      <AcceptanceCriteria>AI анализирует аудио и экран, отображает релевантные ответы в overlay-окне</AcceptanceCriteria>
+    </UC-001>
+
+    <UC-002>
+      <Actor>User</Actor>
+      <Action>Выбирает профиль сессии (Interview, Sales, Meeting и т.д.)</Action>
+      <Goal>Получать подсказки, адаптированные под конкретный тип разговора</Goal>
+      <AcceptanceCriteria>Системный промпт меняется в соответствии с выбранным профилем</AcceptanceCriteria>
+    </UC-002>
+
+    <UC-003>
+      <Actor>User</Actor>
+      <Action>Выбирает AI-провайдер (BYOK Gemini / Cloud / Local Ollama)</Action>
+      <Goal>Использовать предпочтительный способ AI-инференса</Goal>
+      <AcceptanceCriteria>Приложение корректно работает с каждым из трёх провайдеров</AcceptanceCriteria>
+    </UC-003>
+
+    <UC-004>
+      <Actor>System</Actor>
+      <Action>Захватывает аудио и скриншоты экрана</Action>
+      <Goal>Предоставить AI контекст текущего разговора</Goal>
+      <AcceptanceCriteria>Аудио и скриншоты передаются AI-провайдеру с минимальной задержкой</AcceptanceCriteria>
+    </UC-004>
+
+    <UC-005>
+      <Actor>User</Actor>
+      <Action>Управляет overlay-окном горячими клавишами</Action>
+      <Goal>Быстро показать/скрыть/переместить окно подсказок</Goal>
+      <AcceptanceCriteria>Горячие клавиши работают глобально, окно поддерживает click-through режим</AcceptanceCriteria>
+    </UC-005>
+
+    <UC-006>
+      <Actor>User</Actor>
+      <Action>Просматривает историю сессий</Action>
+      <Goal>Вернуться к предыдущим подсказкам и анализу</Goal>
+      <AcceptanceCriteria>История сессий сохраняется и доступна через UI</AcceptanceCriteria>
+    </UC-006>
+
+  </UseCases>
+</RequirementsAnalysis>

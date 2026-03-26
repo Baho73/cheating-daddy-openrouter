@@ -1,0 +1,102 @@
+<KnowledgeGraph>
+  <Project NAME="Cheating Daddy" VERSION="0.6.0">
+    <keywords>electron, ai-assistant, real-time, screen-capture, audio-capture, overlay, gemini, ollama, whisper, websocket, lit</keywords>
+    <annotation>Electron-приложение для AI-ассистирования в реальном времени во время видеозвонков и профессиональных разговоров. Захватывает экран и аудио, анализирует через AI (Gemini/Ollama/Cloud) и отображает контекстные подсказки в overlay-окне.</annotation>
+
+    <M-MAIN NAME="Main Process" TYPE="ENTRY_POINT">
+      <purpose>Electron main process — инициализация приложения, IPC-обработчики, управление жизненным циклом</purpose>
+      <path>src/index.js</path>
+      <depends>M-WINDOW, M-GEMINI, M-CLOUD, M-LOCALAI, M-STORAGE, M-PROMPTS</depends>
+      <annotations>
+        <fn-createWindow PURPOSE="Создание главного окна приложения" />
+        <fn-setupIPC PURPOSE="Регистрация IPC-обработчиков для renderer process" />
+      </annotations>
+    </M-MAIN>
+
+    <M-WINDOW NAME="Window Management" TYPE="UTILITY">
+      <purpose>Создание Electron-окон, настройка горячих клавиш, управление overlay</purpose>
+      <path>src/utils/window.js</path>
+      <depends>none</depends>
+      <annotations>
+        <fn-createMainWindow PURPOSE="Создание BrowserWindow с overlay-настройками" />
+        <fn-registerShortcuts PURPOSE="Регистрация глобальных горячих клавиш" />
+      </annotations>
+    </M-WINDOW>
+
+    <M-GEMINI NAME="Gemini Integration" TYPE="INTEGRATION">
+      <purpose>Интеграция с Google Gemini API — мультимодальные AI-сессии (аудио, скриншоты, текст)</purpose>
+      <path>src/utils/gemini.js</path>
+      <depends>M-STORAGE, M-PROMPTS</depends>
+      <annotations>
+        <fn-startSession PURPOSE="Инициализация Gemini Live сессии" />
+        <fn-sendAudio PURPOSE="Отправка аудио-чанков в Gemini" />
+        <fn-sendScreenshot PURPOSE="Отправка скриншота для анализа" />
+      </annotations>
+    </M-GEMINI>
+
+    <M-CLOUD NAME="Cloud Backend" TYPE="INTEGRATION">
+      <purpose>WebSocket-клиент для облачного бэкенда (wss://api.cheatingdaddy.com)</purpose>
+      <path>src/utils/cloud.js</path>
+      <depends>M-STORAGE, M-PROMPTS</depends>
+      <annotations>
+        <fn-connectCloud PURPOSE="Установка WebSocket-соединения с облаком" />
+        <fn-sendData PURPOSE="Отправка аудио/скриншотов через WebSocket" />
+      </annotations>
+    </M-CLOUD>
+
+    <M-LOCALAI NAME="Local AI" TYPE="INTEGRATION">
+      <purpose>Локальный AI-пайплайн — Ollama LLM + Hugging Face Whisper STT с VAD</purpose>
+      <path>src/utils/localai.js</path>
+      <depends>M-STORAGE, M-PROMPTS</depends>
+      <annotations>
+        <fn-initWhisper PURPOSE="Инициализация Whisper модели для STT" />
+        <fn-processAudio PURPOSE="VAD + ресемплинг + транскрипция аудио" />
+        <fn-queryOllama PURPOSE="Запрос к локальной Ollama модели" />
+      </annotations>
+    </M-LOCALAI>
+
+    <M-PROMPTS NAME="Prompts" TYPE="UTILITY">
+      <purpose>Системные промпты для профилей (Interview, Sales, Meeting, Presentation, Negotiation)</purpose>
+      <path>src/utils/prompts.js</path>
+      <depends>none</depends>
+      <annotations>
+        <fn-getSystemPrompt PURPOSE="Получение системного промпта по профилю" />
+      </annotations>
+    </M-PROMPTS>
+
+    <M-STORAGE NAME="Storage" TYPE="DATA_LAYER">
+      <purpose>Персистентное JSON-хранилище — конфиг, credentials, настройки, история сессий</purpose>
+      <path>src/storage.js</path>
+      <depends>none</depends>
+      <annotations>
+        <fn-getConfig PURPOSE="Чтение конфигурации" />
+        <fn-setConfig PURPOSE="Запись конфигурации" />
+        <fn-getHistory PURPOSE="Получение истории сессий" />
+      </annotations>
+    </M-STORAGE>
+
+    <M-UI-APP NAME="App Shell" TYPE="UI_COMPONENT">
+      <purpose>Корневой Lit веб-компонент — роутинг, состояние приложения</purpose>
+      <path>src/components/app/CheatingDaddyApp.js</path>
+      <depends>M-UI-VIEWS</depends>
+    </M-UI-APP>
+
+    <M-UI-VIEWS NAME="Views" TYPE="UI_COMPONENT">
+      <purpose>Lit-компоненты представлений — MainView, AssistantView, CustomizeView, HistoryView и др.</purpose>
+      <path>src/components/views/</path>
+      <depends>M-STORAGE</depends>
+    </M-UI-VIEWS>
+
+    <!-- CrossLinks -->
+    <CrossLink from="M-MAIN" to="M-WINDOW" relation="creates and manages windows" />
+    <CrossLink from="M-MAIN" to="M-GEMINI" relation="initializes Gemini sessions via IPC" />
+    <CrossLink from="M-MAIN" to="M-CLOUD" relation="initializes cloud connection via IPC" />
+    <CrossLink from="M-MAIN" to="M-LOCALAI" relation="initializes local AI pipeline via IPC" />
+    <CrossLink from="M-MAIN" to="M-STORAGE" relation="reads/writes persistent config" />
+    <CrossLink from="M-GEMINI" to="M-PROMPTS" relation="uses system prompts for sessions" />
+    <CrossLink from="M-CLOUD" to="M-PROMPTS" relation="sends system prompts to cloud" />
+    <CrossLink from="M-LOCALAI" to="M-PROMPTS" relation="uses system prompts for Ollama queries" />
+    <CrossLink from="M-UI-APP" to="M-UI-VIEWS" relation="renders view components" />
+
+  </Project>
+</KnowledgeGraph>

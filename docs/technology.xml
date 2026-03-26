@@ -1,0 +1,34 @@
+<TechnologyStack VERSION="0.1.0">
+  <!-- Runtime and language -->
+  <Runtime>Node.js 20.x</Runtime>
+  <Language>JavaScript ES2022+</Language>
+
+  <!-- Framework -->
+  <Framework>Electron 30.0.5</Framework>
+
+  <!-- Key libraries and dependencies -->
+  <Dependencies>
+    <dep name="@google/genai" version="1.2.0" purpose="Google Gemini API — мультимодальный AI-инференс" />
+    <dep name="@huggingface/transformers" version="3.8.1" purpose="Whisper STT — офлайн распознавание речи" />
+    <dep name="ollama" version="0.6.3" purpose="Локальный LLM-инференс через Ollama" />
+    <dep name="ws" version="8.19.0" purpose="WebSocket-клиент для облачного бэкенда" />
+    <dep name="lit" version="2.7.4" purpose="UI веб-компоненты" />
+    <dep name="electron-squirrel-startup" version="1.0.1" purpose="Обработка установки/обновления на Windows" />
+  </Dependencies>
+
+  <!-- Version constraints -->
+  <VersionConstraints>
+    <constraint lib="electron" min="30.0.0" max="30.x" reason="Используются API Electron 30, включая desktopCapturer" />
+    <constraint lib="@google/genai" min="1.0.0" max="1.x" reason="Google GenAI SDK v1 API" />
+    <constraint lib="lit" min="2.0.0" max="2.x" reason="Lit 2.x веб-компоненты" />
+  </VersionConstraints>
+
+  <!-- Build and tooling -->
+  <Tooling>
+    <tool name="bundler" value="electron-forge" version="7.8.1" />
+    <tool name="formatter" value="prettier" version="latest" />
+    <tool name="maker-windows" value="@electron-forge/maker-squirrel" />
+    <tool name="maker-macos" value="@electron-forge/maker-dmg" />
+    <tool name="maker-linux" value="@reforged/maker-appimage" />
+  </Tooling>
+</TechnologyStack>

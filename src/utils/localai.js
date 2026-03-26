@@ -166,7 +166,6 @@ async function transcribeAudio(pcm16kBuffer) {
         // Whisper expects audio at 16kHz which is what we have
         const result = await whisperPipeline(float32Audio, {
             sampling_rate: 16000,
-            language: 'en',
             task: 'transcribe',
         });
 

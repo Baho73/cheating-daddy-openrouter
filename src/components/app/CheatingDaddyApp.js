@@ -336,6 +336,60 @@ export class CheatingDaddyApp extends LitElement {
             white-space: nowrap;
         }
 
+        .audio-indicators {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .audio-indicator {
+            display: flex;
+            align-items: center;
+            gap: 3px;
+            cursor: pointer;
+            padding: 2px 4px;
+            border-radius: 3px;
+            transition: opacity 0.2s;
+        }
+
+        .audio-indicator:hover {
+            background: var(--bg-elevated);
+        }
+
+        .audio-indicator.muted {
+            opacity: 0.35;
+        }
+
+        .audio-indicator svg {
+            width: 12px;
+            height: 12px;
+            flex-shrink: 0;
+        }
+
+        .audio-indicator .level-bar {
+            width: 24px;
+            height: 6px;
+            background: var(--bg-elevated);
+            border-radius: 3px;
+            overflow: hidden;
+            position: relative;
+        }
+
+        .audio-indicator .level-fill {
+            height: 100%;
+            border-radius: 3px;
+            transition: width 0.1s;
+            background: var(--success);
+        }
+
+        .audio-indicator .level-fill.medium {
+            background: var(--warning);
+        }
+
+        .audio-indicator .level-fill.hot {
+            background: var(--danger);
+        }
+
         /* Content inner */
         .content-inner {
             flex: 1;
@@ -398,6 +452,10 @@ export class CheatingDaddyApp extends LitElement {
         _whisperDownloading: { state: true },
         _sessionInfo: { state: true },
         _audioMode: { state: true },
+        _speakerLevel: { state: true },
+        _micLevel: { state: true },
+        _speakerMuted: { state: true },
+        _micMuted: { state: true },
     };
 
     constructor() {
@@ -425,6 +483,10 @@ export class CheatingDaddyApp extends LitElement {
         this._whisperDownloading = false;
         this._sessionInfo = null;
         this._audioMode = 'speaker_only';
+        this._speakerLevel = 0;
+        this._micLevel = 0;
+        this._speakerMuted = false;
+        this._micMuted = false;
         this._localVersion = '';
 
         this._loadFromStorage();
@@ -502,6 +564,17 @@ export class CheatingDaddyApp extends LitElement {
             ipcRenderer.on('click-through-toggled', (_, isEnabled) => { this._isClickThrough = isEnabled; });
             ipcRenderer.on('reconnect-failed', (_, data) => this.addNewResponse(data.message));
             ipcRenderer.on('whisper-downloading', (_, downloading) => { this._whisperDownloading = downloading; });
+            // Audio level metering
+            if (window.cheatingDaddy?.onAudioLevels) {
+                this._audioLevelCallback = (levels) => {
+                    this._speakerLevel = levels.speaker;
+                    this._micLevel = levels.mic;
+                };
+                window.cheatingDaddy.onAudioLevels(this._audioLevelCallback);
+                // Update UI at 10fps (not every audio frame)
+                this._levelInterval = setInterval(() => this.requestUpdate(), 100);
+            }
+
             ipcRenderer.on('toggle-mirror-mode', async () => {
                 const prefs = await cheatingDaddy.storage.getPreferences();
                 const newVal = !(prefs.mirrorMode ?? false);
@@ -514,6 +587,10 @@ export class CheatingDaddyApp extends LitElement {
     disconnectedCallback() {
         super.disconnectedCallback();
         this._stopTimer();
+        if (this._levelInterval) {
+            clearInterval(this._levelInterval);
+            this._levelInterval = null;
+        }
         if (window.require) {
             const { ipcRenderer } = window.require('electron');
             ipcRenderer.removeAllListeners('show-transcription');
@@ -783,6 +860,33 @@ export class CheatingDaddyApp extends LitElement {
         }
     }
 
+    // ── Audio indicator toggles ──
+
+    _toggleSpeaker() {
+        if (window.cheatingDaddy?.toggleSpeakerMute) {
+            this._speakerMuted = window.cheatingDaddy.toggleSpeakerMute();
+        }
+    }
+
+    _toggleMic() {
+        if (window.cheatingDaddy?.toggleMicMute) {
+            this._micMuted = window.cheatingDaddy.toggleMicMute();
+        }
+    }
+
+    _renderAudioIndicator(level, muted, icon, title, toggleFn) {
+        const pct = Math.min(100, Math.round(level * 500)); // RMS ~0.0-0.2 mapped to 0-100%
+        const cls = pct > 80 ? 'hot' : pct > 40 ? 'medium' : '';
+        return html`
+            <div class="audio-indicator ${muted ? 'muted' : ''}" @click=${toggleFn} title=${title}>
+                ${icon}
+                <div class="level-bar">
+                    <div class="level-fill ${cls}" style="width:${muted ? 0 : pct}%"></div>
+                </div>
+            </div>
+        `;
+    }
+
     // ── Helpers ──
 
     _isLiveMode() {
@@ -933,7 +1037,20 @@ export class CheatingDaddyApp extends LitElement {
                     ${profileLabels[this.selectedProfile] || 'Session'}
                     ${this._sessionInfo ? html`<span class="live-bar-tag">${this._sessionInfo.stt}</span>` : ''}
                     ${this._sessionInfo?.detector ? html`<span class="live-bar-tag">Det: ${this._sessionInfo.detector}</span>` : ''}
-                    <span class="live-bar-tag">${this._audioMode === 'both' ? 'SPK+MIC' : this._audioMode === 'mic_only' ? 'MIC' : 'SPK'}</span>
+                    <div class="audio-indicators">
+                        ${this._audioMode !== 'mic_only' ? this._renderAudioIndicator(
+                            this._speakerLevel, this._speakerMuted,
+                            html`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor"><path d="M14 3.23v2.06c2.89.86 5 3.54 5 6.71s-2.11 5.85-5 6.71v2.06c4.01-.91 7-4.49 7-8.77s-2.99-7.86-7-8.77zM16.5 12c0-1.77-1.02-3.29-2.5-4.03v8.05c1.48-.73 2.5-2.25 2.5-4.02zM3 9v6h4l5 5V4L7 9H3z"/></svg>`,
+                            this._speakerMuted ? 'Speaker MUTED (click to unmute)' : 'Speaker (click to mute)',
+                            () => this._toggleSpeaker()
+                        ) : ''}
+                        ${this._audioMode !== 'speaker_only' ? this._renderAudioIndicator(
+                            this._micLevel, this._micMuted,
+                            html`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor"><path d="M12 14c1.66 0 3-1.34 3-3V5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3zm-1-9c0-.55.45-1 1-1s1 .45 1 1v6c0 .55-.45 1-1 1s-1-.45-1-1V5zm6 6c0 2.76-2.24 5-5 5s-5-2.24-5-5H5c0 3.53 2.61 6.43 6 6.92V21h2v-3.08c3.39-.49 6-3.39 6-6.92h-2z"/></svg>`,
+                            this._micMuted ? 'Mic MUTED (click to unmute)' : 'Mic (click to mute)',
+                            () => this._toggleMic()
+                        ) : ''}
+                    </div>
                 </div>
                 <div class="live-bar-right">
                     ${this.statusText ? html`<span class="live-bar-text">${this.statusText}</span>` : ''}

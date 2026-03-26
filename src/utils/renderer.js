@@ -42,6 +42,13 @@ let offscreenCanvas = null;
 let offscreenContext = null;
 let currentImageQuality = 'medium'; // Store current image quality for manual screenshots
 
+// Audio level metering and mute state
+let speakerMuted = false;
+let micMuted = false;
+let speakerLevel = 0;
+let micLevel = 0;
+const audioEventTarget = new EventTarget();
+
 const isLinux = process.platform === 'linux';
 const isMacOS = process.platform === 'darwin';
 
@@ -161,6 +168,14 @@ function convertFloat32ToInt16(float32Array) {
         int16Array[i] = s < 0 ? s * 0x8000 : s * 0x7fff;
     }
     return int16Array;
+}
+
+function calculateRMSFromFloat32(float32Array) {
+    let sum = 0;
+    for (let i = 0; i < float32Array.length; i++) {
+        sum += float32Array[i] * float32Array[i];
+    }
+    return Math.sqrt(sum / float32Array.length);
 }
 
 function arrayBufferToBase64(buffer) {
@@ -485,6 +500,14 @@ function setupLinuxMicProcessing(micStream) {
 
     micProcessor.onaudioprocess = async e => {
         const inputData = e.inputBuffer.getChannelData(0);
+
+        micLevel = calculateRMSFromFloat32(inputData);
+        audioEventTarget.dispatchEvent(new CustomEvent('audio-levels', {
+            detail: { speaker: speakerLevel, mic: micLevel }
+        }));
+
+        if (micMuted) return;
+
         audioBuffer.push(...inputData);
 
         // Process audio in chunks
@@ -518,6 +541,14 @@ function setupLinuxSystemAudioProcessing() {
 
     audioProcessor.onaudioprocess = async e => {
         const inputData = e.inputBuffer.getChannelData(0);
+
+        speakerLevel = calculateRMSFromFloat32(inputData);
+        audioEventTarget.dispatchEvent(new CustomEvent('audio-levels', {
+            detail: { speaker: speakerLevel, mic: micLevel }
+        }));
+
+        if (speakerMuted) return;
+
         audioBuffer.push(...inputData);
 
         // Process audio in chunks
@@ -548,6 +579,15 @@ function setupWindowsLoopbackProcessing() {
 
     audioProcessor.onaudioprocess = async e => {
         const inputData = e.inputBuffer.getChannelData(0);
+
+        // Calculate and broadcast speaker level
+        speakerLevel = calculateRMSFromFloat32(inputData);
+        audioEventTarget.dispatchEvent(new CustomEvent('audio-levels', {
+            detail: { speaker: speakerLevel, mic: micLevel }
+        }));
+
+        if (speakerMuted) return; // Skip processing when muted
+
         audioBuffer.push(...inputData);
 
         // Process audio in chunks
@@ -1153,6 +1193,24 @@ const cheatingDaddy = {
 
     // Refresh preferences cache (call after updating preferences)
     refreshPreferencesCache: loadPreferencesCache,
+
+    // Audio level metering and mute controls
+    toggleSpeakerMute() {
+        speakerMuted = !speakerMuted;
+        return speakerMuted;
+    },
+    toggleMicMute() {
+        micMuted = !micMuted;
+        return micMuted;
+    },
+    getSpeakerMuted() { return speakerMuted; },
+    getMicMuted() { return micMuted; },
+    onAudioLevels(callback) {
+        audioEventTarget.addEventListener('audio-levels', e => callback(e.detail));
+    },
+    offAudioLevels() {
+        // Simple cleanup - replace target is not feasible, caller should manage listeners
+    },
 
     // Platform detection
     isLinux: isLinux,

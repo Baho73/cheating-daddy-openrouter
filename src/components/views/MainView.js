@@ -1065,7 +1065,7 @@ export class MainView extends LitElement {
 
             const t1 = performance.now();
             const txResp = await fetch(
-                `${this._whisperXUrl}/service/transcribe?language=${this._whisperXLang}&model=${this._whisperXModel}`,
+                `${this._whisperXUrl}/service/transcribe?language=${this._whisperXLang}&model=${this._whisperXModel}&vad_onset=0.01&vad_offset=0.01`,
                 { method: 'POST', body: formData }
             );
             if (!txResp.ok) throw new Error(`Transcribe HTTP ${txResp.status}`);

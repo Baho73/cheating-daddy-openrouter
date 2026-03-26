@@ -144,7 +144,7 @@ async function transcribeWithWhisperX(pcm16kBuffer) {
         const formData = new FormData();
         formData.append('file', blob, 'audio.wav');
 
-        const url = `${whisperXUrl}/service/transcribe?language=${whisperXLang}&model=${whisperXModel}`;
+        const url = `${whisperXUrl}/service/transcribe?language=${whisperXLang}&model=${whisperXModel}&vad_onset=0.01&vad_offset=0.01`;
         const resp = await fetch(url, { method: 'POST', body: formData });
 
         if (!resp.ok) {

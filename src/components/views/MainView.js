@@ -610,6 +610,7 @@ export class MainView extends LitElement {
         _detectorModel: { state: true },
         _windowSize: { state: true },
         _checkFrequency: { state: true },
+        _transcriptionInterval: { state: true },
     };
 
     constructor() {
@@ -647,6 +648,7 @@ export class MainView extends LitElement {
         this._detectorModel = 'openai/gpt-4o-mini';
         this._windowSize = 15;
         this._checkFrequency = 1000;
+        this._transcriptionInterval = 1000;
 
         this._animId = null;
         this._time = 0;
@@ -693,6 +695,7 @@ export class MainView extends LitElement {
             this._detectorModel = prefs.detectorModel || 'openai/gpt-4o-mini';
             this._windowSize = prefs.windowSize || 15;
             this._checkFrequency = prefs.checkFrequency || 1000;
+            this._transcriptionInterval = prefs.transcriptionInterval || 1000;
 
             // Load cached OpenRouter models list
             const cachedModels = prefs.openrouterCachedModels;
@@ -957,6 +960,11 @@ export class MainView extends LitElement {
     async _saveCheckFrequency(val) {
         this._checkFrequency = parseInt(val) || 1000;
         await cheatingDaddy.storage.updatePreference('checkFrequency', this._checkFrequency);
+        this.requestUpdate();
+    }
+    async _saveTranscriptionInterval(val) {
+        this._transcriptionInterval = parseInt(val) || 1000;
+        await cheatingDaddy.storage.updatePreference('transcriptionInterval', this._transcriptionInterval);
         this.requestUpdate();
     }
 
@@ -1610,8 +1618,18 @@ export class MainView extends LitElement {
                             <option value="2000">2s</option>
                         </select>
                     </div>
+                    <div style="flex:1">
+                        <label style="font-size:var(--font-size-xs);color:var(--text-secondary)">STT chunk</label>
+                        <select .value=${String(this._transcriptionInterval)} @change=${e => this._saveTranscriptionInterval(e.target.value)}>
+                            <option value="500">0.5s</option>
+                            <option value="1000">1s</option>
+                            <option value="1500">1.5s</option>
+                            <option value="2000">2s</option>
+                            <option value="2500">2.5s</option>
+                        </select>
+                    </div>
                 </div>
-                <div class="form-hint">How much speech to analyze and how often to check for questions</div>
+                <div class="form-hint">Window — how much speech context. Check — how often to detect questions. STT chunk — how often to transcribe audio.</div>
             </div>
 
             <div class="diag-section">

@@ -31,7 +31,7 @@ let isTranscribing = false;      // Lock to prevent overlapping transcriptions
 let isDetecting = false;         // Lock to prevent overlapping detections
 let pendingAudioChunks = [];     // Accumulate audio between transcription sends
 let lastTranscriptionTime = 0;   // Track when we last sent audio to WhisperX
-const TRANSCRIPTION_INTERVAL_MS = 2500; // Send audio to WhisperX every 2.5s
+let transcriptionIntervalMs = 1000; // Send audio to WhisperX every Ns (configurable)
 
 // Audio resampling buffer
 let resampleRemainder = Buffer.alloc(0);
@@ -553,6 +553,7 @@ async function initializeOpenRouterSession(apiKey, model, visionModel, whisperMo
         detectorModel = whisperXConfig?.detectorModel || 'openai/gpt-4o-mini';
         windowSizeSec = whisperXConfig?.windowSize || 15;
         checkFrequencyMs = whisperXConfig?.checkFrequency || 1000;
+        transcriptionIntervalMs = whisperXConfig?.transcriptionInterval || 1000;
 
         // Reset continuous state
         continuousBuffer = [];
@@ -597,7 +598,7 @@ function processOpenRouterAudio(monoChunk24k) {
     pendingAudioChunks.push(Buffer.from(pcm16k));
 
     const now = Date.now();
-    if (!isTranscribing && now - lastTranscriptionTime >= TRANSCRIPTION_INTERVAL_MS) {
+    if (!isTranscribing && now - lastTranscriptionTime >= transcriptionIntervalMs) {
         lastTranscriptionTime = now;
         transcribeAccumulatedAudio();
     }

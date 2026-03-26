@@ -195,6 +195,7 @@ async function initializeOpenRouter(profile = 'interview') {
         detectorModel: prefs.detectorModel || 'openai/gpt-4o-mini',
         windowSize: prefs.windowSize || 15,
         checkFrequency: prefs.checkFrequency || 1000,
+        transcriptionInterval: prefs.transcriptionInterval || 1000,
     };
     if (prefs.whisperXEnabled !== false) {
         whisperXConfig.url = prefs.whisperXUrl || 'http://localhost:8000';

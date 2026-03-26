@@ -606,6 +606,10 @@ export class MainView extends LitElement {
         _whisperXUrl: { state: true },
         _whisperXModel: { state: true },
         _whisperXLang: { state: true },
+        // Question Detector
+        _detectorModel: { state: true },
+        _windowSize: { state: true },
+        _checkFrequency: { state: true },
     };
 
     constructor() {
@@ -640,6 +644,9 @@ export class MainView extends LitElement {
         this._whisperXUrl = 'http://localhost:8000';
         this._whisperXModel = 'large-v3';
         this._whisperXLang = 'ru';
+        this._detectorModel = 'openai/gpt-4o-mini';
+        this._windowSize = 15;
+        this._checkFrequency = 1000;
 
         this._animId = null;
         this._time = 0;
@@ -681,6 +688,11 @@ export class MainView extends LitElement {
             this._whisperXUrl = prefs.whisperXUrl || 'http://localhost:8000';
             this._whisperXModel = prefs.whisperXModel || 'large-v3';
             this._whisperXLang = prefs.whisperXLang || 'ru';
+
+            // Load Question Detector settings
+            this._detectorModel = prefs.detectorModel || 'openai/gpt-4o-mini';
+            this._windowSize = prefs.windowSize || 15;
+            this._checkFrequency = prefs.checkFrequency || 1000;
 
             // Load cached OpenRouter models list
             const cachedModels = prefs.openrouterCachedModels;
@@ -929,6 +941,22 @@ export class MainView extends LitElement {
     async _saveWhisperXLang(val) {
         this._whisperXLang = val;
         await cheatingDaddy.storage.updatePreference('whisperXLang', val);
+        this.requestUpdate();
+    }
+
+    async _saveDetectorModel(val) {
+        this._detectorModel = val;
+        await cheatingDaddy.storage.updatePreference('detectorModel', val);
+        this.requestUpdate();
+    }
+    async _saveWindowSize(val) {
+        this._windowSize = parseInt(val) || 15;
+        await cheatingDaddy.storage.updatePreference('windowSize', this._windowSize);
+        this.requestUpdate();
+    }
+    async _saveCheckFrequency(val) {
+        this._checkFrequency = parseInt(val) || 1000;
+        await cheatingDaddy.storage.updatePreference('checkFrequency', this._checkFrequency);
         this.requestUpdate();
     }
 
@@ -1546,6 +1574,44 @@ export class MainView extends LitElement {
                     </select>
                     <div class="form-hint">${this.whisperDownloading ? 'Downloading model...' : 'Local Whisper on CPU — enable WhisperX Docker for better accuracy'}</div>
                 `}
+            </div>
+
+            <div class="form-group">
+                <label class="form-label">Question Detector</label>
+                <select
+                    .value=${this._detectorModel}
+                    @change=${e => this._saveDetectorModel(e.target.value)}
+                >
+                    ${hasModels ? renderModelOptions(chatModels, this._detectorModel) : html`
+                        <option value=${this._detectorModel} selected>${this._detectorModel}</option>
+                    `}
+                </select>
+                <div class="form-hint">Fast/cheap model to detect questions in speech stream</div>
+            </div>
+
+            <div class="form-group">
+                <label class="form-label">Detection Settings</label>
+                <div style="display:flex;gap:6px;align-items:center">
+                    <div style="flex:1">
+                        <label style="font-size:var(--font-size-xs);color:var(--text-secondary)">Window (sec)</label>
+                        <select .value=${String(this._windowSize)} @change=${e => this._saveWindowSize(e.target.value)}>
+                            <option value="10">10s</option>
+                            <option value="15">15s</option>
+                            <option value="20">20s</option>
+                            <option value="30">30s</option>
+                        </select>
+                    </div>
+                    <div style="flex:1">
+                        <label style="font-size:var(--font-size-xs);color:var(--text-secondary)">Check every</label>
+                        <select .value=${String(this._checkFrequency)} @change=${e => this._saveCheckFrequency(e.target.value)}>
+                            <option value="500">500ms</option>
+                            <option value="1000">1s</option>
+                            <option value="1500">1.5s</option>
+                            <option value="2000">2s</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="form-hint">How much speech to analyze and how often to check for questions</div>
             </div>
 
             <div class="diag-section">

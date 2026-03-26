@@ -910,6 +910,7 @@ export class CheatingDaddyApp extends LitElement {
                 <div class="live-bar-center">
                     ${profileLabels[this.selectedProfile] || 'Session'}
                     ${this._sessionInfo ? html`<span class="live-bar-tag">${this._sessionInfo.stt}</span>` : ''}
+                    ${this._sessionInfo?.detector ? html`<span class="live-bar-tag">Det: ${this._sessionInfo.detector}</span>` : ''}
                     <span class="live-bar-tag">${this._audioMode === 'both' ? 'SPK+MIC' : this._audioMode === 'mic_only' ? 'MIC' : 'SPK'}</span>
                 </div>
                 <div class="live-bar-right">

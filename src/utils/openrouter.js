@@ -20,14 +20,18 @@ let whisperXUrl = null; // e.g. 'http://localhost:8000'
 let whisperXModel = 'large-v3';
 let whisperXLang = 'ru';
 
-// VAD state
-let isSpeaking = false;
-let speechBuffers = [];
-let silenceFrameCount = 0;
-let speechFrameCount = 0;
-
-// VAD config
-const VAD_CONFIG = { energyThreshold: 0.02, speechFramesRequired: 2, silenceFramesRequired: 15 };
+// Continuous transcription state
+let continuousBuffer = [];       // Array of {text, timestamp}
+let detectedQuestions = [];      // Last 3 detected questions for dedup
+let detectorModel = 'openai/gpt-4o-mini';
+let windowSizeSec = 15;          // Rolling window in seconds (10-30)
+let checkFrequencyMs = 1000;     // Detection check interval (500-2000)
+let detectorTimer = null;        // setInterval reference
+let isTranscribing = false;      // Lock to prevent overlapping transcriptions
+let isDetecting = false;         // Lock to prevent overlapping detections
+let pendingAudioChunks = [];     // Accumulate audio between transcription sends
+let lastTranscriptionTime = 0;   // Track when we last sent audio to WhisperX
+const TRANSCRIPTION_INTERVAL_MS = 2500; // Send audio to WhisperX every 2.5s
 
 // Audio resampling buffer
 let resampleRemainder = Buffer.alloc(0);
@@ -54,51 +58,6 @@ function resample24kTo16k(inputBuffer) {
     const remainderStart = consumedInputSamples * 2;
     resampleRemainder = remainderStart < combined.length ? combined.slice(remainderStart) : Buffer.alloc(0);
     return outputBuffer;
-}
-
-// ── VAD ──
-
-function calculateRMS(pcm16Buffer) {
-    const samples = pcm16Buffer.length / 2;
-    if (samples === 0) return 0;
-    let sumSquares = 0;
-    for (let i = 0; i < samples; i++) {
-        const sample = pcm16Buffer.readInt16LE(i * 2) / 32768;
-        sumSquares += sample * sample;
-    }
-    return Math.sqrt(sumSquares / samples);
-}
-
-function processVAD(pcm16kBuffer) {
-    const rms = calculateRMS(pcm16kBuffer);
-    const isVoice = rms > VAD_CONFIG.energyThreshold;
-
-    if (isVoice) {
-        speechFrameCount++;
-        silenceFrameCount = 0;
-        if (!isSpeaking && speechFrameCount >= VAD_CONFIG.speechFramesRequired) {
-            isSpeaking = true;
-            speechBuffers = [];
-            console.log('[OpenRouter] Speech started (RMS:', rms.toFixed(4), ')');
-            sendToRenderer('update-status', 'Listening... (speech detected)');
-        }
-    } else {
-        silenceFrameCount++;
-        speechFrameCount = 0;
-        if (isSpeaking && silenceFrameCount >= VAD_CONFIG.silenceFramesRequired) {
-            isSpeaking = false;
-            console.log('[OpenRouter] Speech ended,', speechBuffers.length, 'chunks');
-            sendToRenderer('update-status', 'Transcribing...');
-            const audioData = Buffer.concat(speechBuffers);
-            speechBuffers = [];
-            handleSpeechEnd(audioData);
-            return;
-        }
-    }
-
-    if (isSpeaking) {
-        speechBuffers.push(Buffer.from(pcm16kBuffer));
-    }
 }
 
 // ── Whisper ──
@@ -230,27 +189,135 @@ async function transcribeWithWhisperX(pcm16kBuffer) {
     }
 }
 
-// ── Speech End → OpenRouter ──
+// ── Continuous Transcription ──
 
-async function handleSpeechEnd(audioData) {
-    if (!isActive) return;
-    if (audioData.length < 16000) {
-        console.log('[OpenRouter] Audio too short, skipping');
-        sendToRenderer('update-status', 'Listening...');
-        return;
+async function transcribeAccumulatedAudio() {
+    if (isTranscribing || pendingAudioChunks.length === 0) return;
+    isTranscribing = true;
+
+    const audioData = Buffer.concat(pendingAudioChunks);
+    pendingAudioChunks = [];
+
+    try {
+        if (audioData.length < 16000) {
+            isTranscribing = false;
+            return;
+        }
+
+        const text = whisperXUrl
+            ? await transcribeWithWhisperX(audioData)
+            : await transcribeAudio(audioData);
+
+        if (text && text.trim().length > 1) {
+            continuousBuffer.push({
+                text: text.trim(),
+                timestamp: Date.now(),
+            });
+
+            const cutoff = Date.now() - (windowSizeSec * 1000);
+            continuousBuffer = continuousBuffer.filter(entry => entry.timestamp >= cutoff);
+
+            sendToRenderer('update-status', `Hearing: "${text.trim().substring(0, 50)}..."`);
+            console.log('[OpenRouter] Continuous transcription:', text.trim().substring(0, 80));
+        }
+    } catch (error) {
+        console.error('[OpenRouter] Transcription error:', error);
     }
 
-    const transcription = whisperXUrl
-        ? await transcribeWithWhisperX(audioData)
-        : await transcribeAudio(audioData);
-    if (!transcription || transcription.trim().length < 2) {
-        sendToRenderer('update-status', 'Listening...');
-        return;
+    isTranscribing = false;
+}
+
+// ── Question Detection ──
+
+function buildDetectorPrompt() {
+    const fullText = continuousBuffer.map(e => e.text).join(' ');
+    if (!fullText.trim()) return null;
+
+    const recentQuestions = detectedQuestions.slice(-3);
+    const recentList = recentQuestions.length > 0
+        ? recentQuestions.map((q, i) => `${i + 1}. ${q}`).join('\n')
+        : '(none yet)';
+
+    return `You are a question detector for a live interview/meeting. Below is the last ${windowSizeSec} seconds of transcribed speech.
+
+Your task: identify if there is a NEW question being asked to the candidate/participant.
+
+Rules:
+- Return ONLY the question text, nothing else
+- If there is no new question, return exactly: ---
+- If the question is the same or very similar to a recently detected one, return: ---
+- Extract the COMPLETE question, not fragments
+- The question may be in any language — preserve the original language
+
+Recently detected questions (do NOT repeat these):
+${recentList}
+
+Transcription:
+"${fullText}"`;
+}
+
+async function detectQuestion() {
+    if (isDetecting || !isActive || !openrouterApiKey) return;
+    if (continuousBuffer.length === 0) return;
+
+    isDetecting = true;
+
+    try {
+        const prompt = buildDetectorPrompt();
+        if (!prompt) {
+            isDetecting = false;
+            return;
+        }
+
+        const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+            method: 'POST',
+            headers: {
+                'Authorization': `Bearer ${openrouterApiKey}`,
+                'Content-Type': 'application/json',
+                'HTTP-Referer': 'https://cheatingdaddy.com',
+                'X-Title': 'Cheating Daddy',
+            },
+            body: JSON.stringify({
+                model: detectorModel,
+                messages: [{ role: 'user', content: prompt }],
+                temperature: 0.1,
+                max_tokens: 256,
+            }),
+        });
+
+        if (!response.ok) {
+            console.error('[OpenRouter] Detector error:', response.status);
+            isDetecting = false;
+            return;
+        }
+
+        const data = await response.json();
+        const result = data.choices?.[0]?.message?.content?.trim();
+
+        if (result && result !== '---' && result.length > 5) {
+            console.log('[OpenRouter] Question detected:', result);
+
+            const lastQ = detectedQuestions[detectedQuestions.length - 1];
+            if (lastQ && lastQ.toLowerCase() === result.toLowerCase()) {
+                isDetecting = false;
+                return;
+            }
+
+            detectedQuestions.push(result);
+            if (detectedQuestions.length > 10) {
+                detectedQuestions = detectedQuestions.slice(-10);
+            }
+
+            sendToRenderer('show-transcription', result);
+            sendToRenderer('update-status', 'Generating response...');
+            await sendToOpenRouter(result);
+            sendToRenderer('update-status', 'Listening...');
+        }
+    } catch (error) {
+        console.error('[OpenRouter] Detector error:', error);
     }
 
-    sendToRenderer('show-transcription', transcription.trim());
-    sendToRenderer('update-status', 'Generating response...');
-    await sendToOpenRouter(transcription);
+    isDetecting = false;
 }
 
 // ── OpenRouter Chat API ──
@@ -488,21 +555,34 @@ async function initializeOpenRouterSession(apiKey, model, visionModel, whisperMo
             }
         }
 
-        // Reset VAD state
-        isSpeaking = false;
-        speechBuffers = [];
-        silenceFrameCount = 0;
-        speechFrameCount = 0;
+        // Continuous transcription config
+        detectorModel = whisperXConfig?.detectorModel || 'openai/gpt-4o-mini';
+        windowSizeSec = whisperXConfig?.windowSize || 15;
+        checkFrequencyMs = whisperXConfig?.checkFrequency || 1000;
+
+        // Reset continuous state
+        continuousBuffer = [];
+        detectedQuestions = [];
+        pendingAudioChunks = [];
+        isTranscribing = false;
+        isDetecting = false;
+        lastTranscriptionTime = 0;
         resampleRemainder = Buffer.alloc(0);
 
         initializeNewSession(profile, customPrompt);
         isActive = true;
+
+        // Start question detection timer
+        if (detectorTimer) clearInterval(detectorTimer);
+        detectorTimer = setInterval(() => detectQuestion(), checkFrequencyMs);
+        console.log(`[OpenRouter] Detector started: ${detectorModel}, window=${windowSizeSec}s, freq=${checkFrequencyMs}ms`);
 
         sendToRenderer('session-initializing', false);
         sendToRenderer('session-info', {
             stt: whisperXUrl ? `WhisperX Docker (${whisperXModel})` : `Local (${whisperModel})`,
             sttUrl: whisperXUrl || 'local',
             lang: whisperXLang || 'auto',
+            detector: detectorModel.split('/').pop(),
         });
         sendToRenderer('update-status', 'Listening...');
         console.log('[OpenRouter] Session initialized');
@@ -518,22 +598,36 @@ async function initializeOpenRouterSession(apiKey, model, visionModel, whisperMo
 function processOpenRouterAudio(monoChunk24k) {
     if (!isActive) return;
     const pcm16k = resample24kTo16k(monoChunk24k);
-    if (pcm16k.length > 0) {
-        processVAD(pcm16k);
+    if (pcm16k.length === 0) return;
+
+    pendingAudioChunks.push(Buffer.from(pcm16k));
+
+    const now = Date.now();
+    if (!isTranscribing && now - lastTranscriptionTime >= TRANSCRIPTION_INTERVAL_MS) {
+        lastTranscriptionTime = now;
+        transcribeAccumulatedAudio();
     }
 }
 
 function closeOpenRouterSession() {
     console.log('[OpenRouter] Closing session');
     isActive = false;
-    isSpeaking = false;
-    speechBuffers = [];
-    silenceFrameCount = 0;
-    speechFrameCount = 0;
+
+    if (detectorTimer) {
+        clearInterval(detectorTimer);
+        detectorTimer = null;
+    }
+
+    continuousBuffer = [];
+    detectedQuestions = [];
+    pendingAudioChunks = [];
+    isTranscribing = false;
+    isDetecting = false;
+    lastTranscriptionTime = 0;
     resampleRemainder = Buffer.alloc(0);
+
     conversationHistory = [];
     currentSystemPrompt = null;
-    // Keep whisperPipeline loaded
 }
 
 function isOpenRouterActive() {

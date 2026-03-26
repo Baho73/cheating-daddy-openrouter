@@ -191,6 +191,22 @@ async function transcribeWithWhisperX(pcm16kBuffer) {
 
 // ── Continuous Transcription ──
 
+// Whisper hallucination filter — common patterns when no real speech
+const HALLUCINATION_PATTERNS = [
+    /субтитры/i, /продолжение следу/i, /спасибо за просмотр/i, /подпис/i,
+    /subtitles/i, /subscribe/i, /thanks for watching/i, /like and subscribe/i,
+    /\bDimaTorzok\b/i, /\bAmara\.org\b/i, /\bwww\./i,
+    /^\.+$/, /^\[.*\]$/, /^INAUDIBLE$/i,
+    /продолжение следует/i, /музыка/i, /аплодисменты/i,
+    /music/i, /applause/i, /\blaughter\b/i,
+];
+
+function isHallucination(text) {
+    const t = text.trim();
+    if (t.length < 3) return true;
+    return HALLUCINATION_PATTERNS.some(p => p.test(t));
+}
+
 async function transcribeAccumulatedAudio() {
     if (isTranscribing || pendingAudioChunks.length === 0) return;
     isTranscribing = true;
@@ -205,7 +221,7 @@ async function transcribeAccumulatedAudio() {
             ? await transcribeWithWhisperX(audioData)
             : await transcribeAudio(audioData);
 
-        if (text && text.trim().length > 1) {
+        if (text && text.trim().length > 1 && !isHallucination(text)) {
             continuousBuffer.push({
                 text: text.trim(),
                 timestamp: Date.now(),

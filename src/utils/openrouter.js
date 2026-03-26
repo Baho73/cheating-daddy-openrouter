@@ -27,11 +27,12 @@ let detectorModel = 'openai/gpt-4o-mini';
 let windowSizeSec = 15;          // Rolling window in seconds (10-30)
 let checkFrequencyMs = 1000;     // Detection check interval (500-2000)
 let detectorTimer = null;        // setInterval reference
+let transcriptionTimer = null;   // setInterval for periodic transcription
 let isTranscribing = false;      // Lock to prevent overlapping transcriptions
 let isDetecting = false;         // Lock to prevent overlapping detections
-let pendingAudioChunks = [];     // Accumulate audio between transcription sends
-let lastTranscriptionTime = 0;   // Track when we last sent audio to WhisperX
-let transcriptionIntervalMs = 1000; // Send audio to WhisperX every Ns (configurable)
+let audioRingBuffer = [];        // Ring buffer of PCM16k chunks with timestamps
+let audioLookbackSec = 3;        // How many seconds of audio to send each time
+let transcriptionIntervalMs = 500; // How often to send audio to WhisperX
 
 // Audio resampling buffer
 let resampleRemainder = Buffer.alloc(0);
@@ -208,12 +209,12 @@ function isHallucination(text) {
 }
 
 async function transcribeAccumulatedAudio() {
-    if (isTranscribing || pendingAudioChunks.length === 0) return;
+    if (isTranscribing || audioRingBuffer.length === 0) return;
     isTranscribing = true;
 
     try {
-        const audioData = Buffer.concat(pendingAudioChunks);
-        pendingAudioChunks = [];
+        // Grab entire ring buffer (last N seconds of audio)
+        const audioData = Buffer.concat(audioRingBuffer.map(c => c.data));
 
         if (audioData.length < 16000) return;
 
@@ -569,24 +570,27 @@ async function initializeOpenRouterSession(apiKey, model, visionModel, whisperMo
         detectorModel = whisperXConfig?.detectorModel || 'openai/gpt-4o-mini';
         windowSizeSec = whisperXConfig?.windowSize || 15;
         checkFrequencyMs = whisperXConfig?.checkFrequency || 1000;
-        transcriptionIntervalMs = whisperXConfig?.transcriptionInterval || 1000;
+        transcriptionIntervalMs = whisperXConfig?.transcriptionInterval || 500;
+        audioLookbackSec = whisperXConfig?.audioLookback || 3;
 
         // Reset continuous state
         continuousBuffer = [];
         detectedQuestions = [];
-        pendingAudioChunks = [];
+        audioRingBuffer = [];
         isTranscribing = false;
         isDetecting = false;
-        lastTranscriptionTime = 0;
         resampleRemainder = Buffer.alloc(0);
 
         initializeNewSession(profile, customPrompt);
         isActive = true;
 
-        // Start question detection timer
+        // Start periodic transcription and question detection timers
+        if (transcriptionTimer) clearInterval(transcriptionTimer);
+        transcriptionTimer = setInterval(() => transcribeAccumulatedAudio(), transcriptionIntervalMs);
+
         if (detectorTimer) clearInterval(detectorTimer);
         detectorTimer = setInterval(() => detectQuestion(), checkFrequencyMs);
-        console.log(`[OpenRouter] Detector started: ${detectorModel}, window=${windowSizeSec}s, freq=${checkFrequencyMs}ms`);
+        console.log(`[OpenRouter] Started: STT every ${transcriptionIntervalMs}ms (${audioLookbackSec}s lookback), detector=${detectorModel} every ${checkFrequencyMs}ms, window=${windowSizeSec}s`);
 
         sendToRenderer('session-initializing', false);
         sendToRenderer('session-info', {
@@ -611,19 +615,22 @@ function processOpenRouterAudio(monoChunk24k) {
     const pcm16k = resample24kTo16k(monoChunk24k);
     if (pcm16k.length === 0) return;
 
-    pendingAudioChunks.push(Buffer.from(pcm16k));
+    // Add to ring buffer with timestamp
+    audioRingBuffer.push({ data: Buffer.from(pcm16k), timestamp: Date.now() });
 
-    const now = Date.now();
-    if (!isTranscribing && now - lastTranscriptionTime >= transcriptionIntervalMs) {
-        lastTranscriptionTime = now;
-        transcribeAccumulatedAudio();
-    }
+    // Trim ring buffer to lookback window
+    const cutoff = Date.now() - (audioLookbackSec * 1000);
+    audioRingBuffer = audioRingBuffer.filter(c => c.timestamp >= cutoff);
 }
 
 function closeOpenRouterSession() {
     console.log('[OpenRouter] Closing session');
     isActive = false;
 
+    if (transcriptionTimer) {
+        clearInterval(transcriptionTimer);
+        transcriptionTimer = null;
+    }
     if (detectorTimer) {
         clearInterval(detectorTimer);
         detectorTimer = null;
@@ -631,10 +638,9 @@ function closeOpenRouterSession() {
 
     continuousBuffer = [];
     detectedQuestions = [];
-    pendingAudioChunks = [];
+    audioRingBuffer = [];
     isTranscribing = false;
     isDetecting = false;
-    lastTranscriptionTime = 0;
     resampleRemainder = Buffer.alloc(0);
 
     conversationHistory = [];

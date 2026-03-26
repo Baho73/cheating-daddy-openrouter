@@ -1619,17 +1619,16 @@ export class MainView extends LitElement {
                         </select>
                     </div>
                     <div style="flex:1">
-                        <label style="font-size:var(--font-size-xs);color:var(--text-secondary)">STT chunk</label>
+                        <label style="font-size:var(--font-size-xs);color:var(--text-secondary)">STT every</label>
                         <select .value=${String(this._transcriptionInterval)} @change=${e => this._saveTranscriptionInterval(e.target.value)}>
                             <option value="500">0.5s</option>
                             <option value="1000">1s</option>
                             <option value="1500">1.5s</option>
                             <option value="2000">2s</option>
-                            <option value="2500">2.5s</option>
                         </select>
                     </div>
                 </div>
-                <div class="form-hint">Window — how much speech context. Check — how often to detect questions. STT chunk — how often to transcribe audio.</div>
+                <div class="form-hint">Window — speech context for detector. Check — question detection frequency. STT — how often to transcribe (overlapping 3s chunks).</div>
             </div>
 
             <div class="diag-section">
